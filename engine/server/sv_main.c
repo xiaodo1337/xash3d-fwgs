@@ -92,9 +92,9 @@ static CVAR_DEFINE_AUTO( sv_waterfriction, "1", FCVAR_SERVER|FCVAR_MOVEVARS, "ho
 static CVAR_DEFINE_AUTO( sv_bounce, "1", FCVAR_SERVER|FCVAR_MOVEVARS, "bounce factor for entities with MOVETYPE_BOUNCE" );
 static CVAR_DEFINE_AUTO( sv_stepsize, "18", FCVAR_SERVER|FCVAR_MOVEVARS, "how high you and NPS's can step up" );
 CVAR_DEFINE_AUTO( sv_maxvelocity, "2000", FCVAR_MOVEVARS|FCVAR_UNLOGGED, "max velocity for all things in the world" );
-static CVAR_DEFINE_AUTO( sv_zmax, "4096", FCVAR_SERVER|FCVAR_MOVEVARS|FCVAR_SPONLY, "maximum viewable distance" );
+static CVAR_DEFINE_AUTO( sv_zmax, "4096", FCVAR_MOVEVARS|FCVAR_SPONLY, "maximum viewable distance" );
 CVAR_DEFINE_AUTO( sv_wateramp, "0", FCVAR_MOVEVARS|FCVAR_UNLOGGED, "world waveheight factor" );
-static CVAR_DEFINE( sv_footsteps, "mp_footsteps", "1", FCVAR_SERVER|FCVAR_MOVEVARS, "world gravity value" );
+static CVAR_DEFINE( sv_footsteps, "mp_footsteps", "1", FCVAR_SERVER|FCVAR_MOVEVARS, "play foot steps for players" );
 CVAR_DEFINE_AUTO( sv_skyname, "desert", FCVAR_MOVEVARS|FCVAR_UNLOGGED, "skybox name (can be dynamically changed in-game)" );
 static CVAR_DEFINE_AUTO( sv_rollangle, "0", FCVAR_MOVEVARS|FCVAR_UNLOGGED|FCVAR_ARCHIVE, "how much to tilt the view when strafing" );
 static CVAR_DEFINE_AUTO( sv_rollspeed, "200", FCVAR_MOVEVARS|FCVAR_UNLOGGED, "how much strafing is necessary to tilt the view" );
@@ -189,6 +189,9 @@ void SV_UpdateMovevars( qboolean initialize )
 	if( !initialize && !host.movevars_changed )
 		return;
 
+	// NOTE: this breaks Natural Selection mod on ns_machina map that uses model as sky
+	// it sets the value to 4000000 that even exceeds the coord limit
+#if 0
 	// check range
 	if( sv_zmax.value < 256.0f ) Cvar_SetValue( "sv_zmax", 256.0f );
 
@@ -203,6 +206,7 @@ void SV_UpdateMovevars( qboolean initialize )
 		if( sv_zmax.value > 32767.0f )
 			Cvar_SetValue( "sv_zmax", 32767.0f );
 	}
+#endif
 
 	svgame.movevars.gravity = sv_gravity.value;
 	svgame.movevars.stopspeed = sv_stopspeed.value;
@@ -258,8 +262,8 @@ static void SV_CheckCmdTimes( void )
 		if( sv_fps.value < MIN_FPS )
 			Cvar_SetValue( "sv_fps", MIN_FPS );
 
-		if( sv_fps.value > MAX_FPS )
-			Cvar_SetValue( "sv_fps", MAX_FPS );
+		if( sv_fps.value > MAX_FPS_HARD )
+			Cvar_SetValue( "sv_fps", MAX_FPS_HARD );
 	}
 
 	if( Host_IsLocalGame( ))
@@ -385,23 +389,7 @@ static void SV_ReadPackets( void )
 		// check for connectionless packet (0xffffffff) first
 		if( MSG_GetMaxBytes( &net_message ) >= 4 && *(int *)net_message.pData == -1 )
 		{
-			if( !svs.initialized )
-			{
-				char	*args;
-				const char *c;
-
-				MSG_Clear( &net_message  );
-				MSG_ReadLong( &net_message  );// skip the -1 marker
-
-				args = MSG_ReadStringLine( &net_message  );
-				Cmd_TokenizeString( args );
-				c = Cmd_Argv( 0 );
-
-				if( !Q_strcmp( c, "rcon" ))
-					SV_RemoteCommand( net_from, &net_message );
-			}
-			else SV_ConnectionlessPacket( net_from, &net_message );
-
+			SV_ConnectionlessPacket( net_from, &net_message );
 			continue;
 		}
 
@@ -726,7 +714,7 @@ Master will validate challenge and this server to public list
 void SV_AddToMaster( netadr_t from, sizebuf_t *msg )
 {
 	uint	challenge, challenge2, heartbeat_challenge;
-	char	s[MAX_INFO_STRING] = "0\n"; // skip 2 bytes of header
+	char	s[MAX_INFO_STRING] = S2M_INFO; // skip 2 bytes of header
 	int	clients, bots;
 	double last_heartbeat;
 	const int len = sizeof( s );

@@ -19,7 +19,7 @@ GNU General Public License for more details.
 #include "net_encode.h"
 #include "net_api.h"
 
-const char *clc_strings[clc_lastmsg+1] =
+const char *const clc_strings[clc_lastmsg+1] =
 {
 	"clc_bad",
 	"clc_nop",
@@ -27,11 +27,12 @@ const char *clc_strings[clc_lastmsg+1] =
 	"clc_stringcmd",
 	"clc_delta",
 	"clc_resourcelist",
-	"clc_unused6",
+	"clc_legacy_userinfo",
 	"clc_fileconsistency",
 	"clc_voicedata",
-	"clc_cvarvalue",
-	"clc_cvarvalue2",
+	"clc_cvarvalue/clc_goldsrc_hltv",
+	"clc_cvarvalue2/clc_goldsrc_requestcvarvalue",
+	"clc_goldsrc_requestcvarvalue2",
 };
 
 typedef struct ucmd_s
@@ -130,7 +131,7 @@ static void SV_GetChallenge( netadr_t from )
 	}
 
 	// send it back
-	Netchan_OutOfBandPrint( NS_SERVER, svs.challenges[i].adr, "challenge %i", svs.challenges[i].challenge );
+	Netchan_OutOfBandPrint( NS_SERVER, svs.challenges[i].adr, S2C_CHALLENGE" %i", svs.challenges[i].challenge );
 }
 
 static int SV_GetFragmentSize( void *pcl, fragsize_t mode )
@@ -193,9 +194,9 @@ void SV_RejectConnection( netadr_t from, const char *fmt, ... )
 	va_end( argptr );
 
 	Con_Reportf( "%s connection refused. Reason: %s\n", NET_AdrToString( from ), text );
-	Netchan_OutOfBandPrint( NS_SERVER, from, "errormsg\n^1Server was reject the connection:^7 %s", text );
-	Netchan_OutOfBandPrint( NS_SERVER, from, "print\n^1Server was reject the connection:^7 %s", text );
-	Netchan_OutOfBandPrint( NS_SERVER, from, "disconnect\n" );
+	Netchan_OutOfBandPrint( NS_SERVER, from, S2C_ERRORMSG"\n^1Server was reject the connection:^7 %s", text );
+	Netchan_OutOfBandPrint( NS_SERVER, from, A2C_PRINT"\n^1Server was reject the connection:^7 %s", text );
+	Netchan_OutOfBandPrint( NS_SERVER, from, S2C_REJECT"\n" );
 }
 
 /*
@@ -444,7 +445,7 @@ static void SV_ConnectClient( netadr_t from )
 	newcl->listeners = -1;
 
 	// initailize netchan
-	Netchan_Setup( NS_SERVER, &newcl->netchan, from, qport, newcl, SV_GetFragmentSize );
+	Netchan_Setup( NS_SERVER, &newcl->netchan, from, qport, newcl, SV_GetFragmentSize, 0 );
 	MSG_Init( &newcl->datagram, "Datagram", newcl->datagram_buf, sizeof( newcl->datagram_buf )); // datagram buf
 
 	Q_strncpy( newcl->hashedcdkey, Info_ValueForKey( protinfo, "uuid" ), 32 );
@@ -455,7 +456,7 @@ static void SV_ConnectClient( netadr_t from )
 	Info_SetValueForKeyf( protinfo, "ext", sizeof( protinfo ), "%d", newcl->extensions );
 
 	// send the connect packet to the client
-	Netchan_OutOfBandPrint( NS_SERVER, from, "client_connect %s", protinfo );
+	Netchan_OutOfBandPrint( NS_SERVER, from, S2C_CONNECTION" %s", protinfo );
 
 	newcl->upstate = us_inactive;
 	newcl->connection_started = host.realtime;
@@ -603,7 +604,7 @@ void SV_KickPlayer( sv_client_t *cl, const char *fmt, ... )
 		SV_BroadcastPrintf( cl, "%s was kicked with message: \"%s\"\n", cl->name, buf );
 		SV_ClientPrintf( cl, "You were kicked from the game with message: \"%s\"\n", buf );
 		if( cl->useragent[0] )
-			Netchan_OutOfBandPrint( NS_SERVER, cl->netchan.remote_address, "errormsg\nKicked with message:\n%s\n", buf );
+			Netchan_OutOfBandPrint( NS_SERVER, cl->netchan.remote_address, S2C_ERRORMSG"\nKicked with message:\n%s\n", buf );
 	}
 	else
 	{
@@ -611,7 +612,7 @@ void SV_KickPlayer( sv_client_t *cl, const char *fmt, ... )
 		SV_BroadcastPrintf( cl, "%s was kicked\n", cl->name );
 		SV_ClientPrintf( cl, "You were kicked from the game\n" );
 		if( cl->useragent[0] )
-			Netchan_OutOfBandPrint( NS_SERVER, cl->netchan.remote_address, "errormsg\nYou were kicked from the game\n" );
+			Netchan_OutOfBandPrint( NS_SERVER, cl->netchan.remote_address, S2C_ERRORMSG"\nYou were kicked from the game\n" );
 	}
 
 	SV_DropClient( cl, false );
@@ -713,20 +714,18 @@ static void SV_BeginRedirect( host_redirect_t *rd, netadr_t adr, rdtype_t target
 
 static void SV_FlushRedirect( netadr_t adr, int dest, char *buf )
 {
-	if( sv.current_client && FBitSet( sv.current_client->flags, FCL_FAKECLIENT ))
-		return;
-
 	switch( dest )
 	{
 	case RD_PACKET:
-		Netchan_OutOfBandPrint( NS_SERVER, adr, "print\n%s", buf );
+		Netchan_OutOfBandPrint( NS_SERVER, adr, A2C_PRINT"\n%s", buf );
 		break;
 	case RD_CLIENT:
-		if( !sv.current_client ) return; // client not set
+		if( !sv.current_client || !FBitSet( sv.current_client->flags, FCL_FAKECLIENT ))
+			return; // client not set
 		MSG_BeginServerCmd( &sv.current_client->netchan.message, svc_print );
 		MSG_WriteString( &sv.current_client->netchan.message, buf );
 		break;
-	case RD_NONE:
+	default:
 		Con_Printf( S_ERROR "%s: %s: invalid destination\n", __func__, NET_AdrToString( adr ));
 		break;
 	}
@@ -952,14 +951,30 @@ static void SV_Info( netadr_t from, int protocolVersion )
 		if( remaining < 0 )
 		{
 			// should never happen?
-			Con_Printf( S_ERROR "SV_Info: infostring overflow!\n" );
+			Con_Printf( S_ERROR "%s: infostring overflow!\n", __func__ );
 			return;
 		}
 		Q_strncpy( temp, hostname.string, remaining );
 		Info_SetValueForKey( s, "host", temp, sizeof( s ));
 	}
 
-	Netchan_OutOfBandPrint( NS_SERVER, from, "info\n%s", s );
+	Netchan_OutOfBandPrint( NS_SERVER, from, A2A_INFO"\n%s", s );
+}
+
+static void SV_ConnectNatClient( netadr_t from )
+{
+	netadr_t to;
+
+	if( !sv_nat.value || !NET_IsMasterAdr( from ))
+		return;
+
+	if( !NET_StringToAdr( Cmd_Argv( 1 ), &to ))
+		return;
+
+	if( NET_IsReservedAdr( to ))
+		return;
+
+	SV_Info( to, PROTOCOL_VERSION );
 }
 
 /*
@@ -993,7 +1008,7 @@ static void SV_BuildNetAnswer( netadr_t from )
 	{
 		// send error unsupported protocol
 		Info_SetValueForKey( string, "neterror", "protocol", sizeof( string ));
-		Netchan_OutOfBandPrint( NS_SERVER, from, "netinfo %i %i %s\n", context, type, string );
+		Netchan_OutOfBandPrint( NS_SERVER, from, A2A_NETINFO" %i %i %s\n", context, type, string );
 		return;
 	}
 
@@ -1064,19 +1079,7 @@ static void SV_BuildNetAnswer( netadr_t from )
 		break;
 	}
 
-	Netchan_OutOfBandPrint( NS_SERVER, from, "netinfo %i %i %s\n", context, type, string );
-}
-
-/*
-================
-SV_Ping
-
-Just responds with an acknowledgement
-================
-*/
-static void SV_Ping( netadr_t from )
-{
-	Netchan_OutOfBandPrint( NS_SERVER, from, "ack" );
+	Netchan_OutOfBandPrint( NS_SERVER, from, A2A_NETINFO" %i %i %s\n", context, type, string );
 }
 
 /*
@@ -1104,10 +1107,7 @@ Redirect all printfs
 */
 void SV_RemoteCommand( netadr_t from, sizebuf_t *msg )
 {
-	static char	outputbuf[2048];
 	const char	*adr;
-	char		remaining[1024];
-	char		*p = remaining;
 	int		i;
 
 	if( !rcon_enable.value || !COM_CheckStringEmpty( rcon_password.string ))
@@ -1120,7 +1120,9 @@ void SV_RemoteCommand( netadr_t from, sizebuf_t *msg )
 
 	if( Rcon_Validate( ))
 	{
-		SV_BeginRedirect( &host.rd, from, RD_PACKET, outputbuf, sizeof( outputbuf ) - 16, SV_FlushRedirect );
+		static char	outputbuf[2048];
+		char remaining[1024];
+		char *p = remaining;
 
 		remaining[0] = 0;
 		for( i = 2; i < Cmd_Argc(); i++ )
@@ -1129,8 +1131,9 @@ void SV_RemoteCommand( netadr_t from, sizebuf_t *msg )
 			p += Q_strncpy( p, Cmd_Argv( i ), sizeof( remaining ) - ( p - remaining ));
 			p += Q_strncpy( p, "\" ", sizeof( remaining ) - ( p - remaining ));
 		}
-		Cmd_ExecuteString( remaining );
 
+		SV_BeginRedirect( &host.rd, from, RD_PACKET, outputbuf, sizeof( outputbuf ) - 16, SV_FlushRedirect );
+		Cmd_ExecuteString( remaining );
 		SV_EndRedirect( &host.rd );
 	}
 	else Con_Printf( S_ERROR "Bad rcon_password.\n" );
@@ -1342,9 +1345,8 @@ otherwise see code SV_UpdateMovevars()
 */
 void SV_FullUpdateMovevars( sv_client_t *cl, sizebuf_t *msg )
 {
-	movevars_t	nullmovevars;
+	const movevars_t nullmovevars = { 0 };
 
-	memset( &nullmovevars, 0, sizeof( nullmovevars ));
 	MSG_WriteDeltaMovevars( msg, &nullmovevars, &svgame.movevars );
 }
 
@@ -1992,7 +1994,7 @@ static qboolean SV_Noclip_f( sv_client_t *cl )
 {
 	edict_t	*pEntity = cl->edict;
 
-	if( !Cvar_VariableInteger( "sv_cheats" ) || sv.background )
+	if( sv.background || !Cvar_VariableInteger( "sv_cheats" ))
 		return true;
 
 	if( pEntity->v.movetype != MOVETYPE_NOCLIP )
@@ -2018,7 +2020,7 @@ static qboolean SV_Godmode_f( sv_client_t *cl )
 {
 	edict_t	*pEntity = cl->edict;
 
-	if( !Cvar_VariableInteger( "sv_cheats" ) || sv.background )
+	if( sv.background || !Cvar_VariableInteger( "sv_cheats" ))
 		return true;
 
 	pEntity->v.flags = pEntity->v.flags ^ FL_GODMODE;
@@ -2039,7 +2041,7 @@ static qboolean SV_Notarget_f( sv_client_t *cl )
 {
 	edict_t	*pEntity = cl->edict;
 
-	if( !Cvar_VariableInteger( "sv_cheats" ) || sv.background )
+	if( sv.background || !Cvar_VariableInteger( "sv_cheats" ))
 		return true;
 
 	pEntity->v.flags = pEntity->v.flags ^ FL_NOTARGET;
@@ -3036,7 +3038,7 @@ static qboolean SV_EntGetVars_f( sv_client_t *cl )
 	return true;
 }
 
-ucmd_t ucmds[] =
+static const ucmd_t ucmds[] =
 {
 { "new", SV_New_f },
 { "god", SV_Godmode_f },
@@ -3056,7 +3058,7 @@ ucmd_t ucmds[] =
 { NULL, NULL }
 };
 
-ucmd_t enttoolscmds[] =
+static const ucmd_t enttoolscmds[] =
 {
 { "ent_list", SV_EntList_f },
 { "ent_info", SV_EntInfo_f },
@@ -3073,7 +3075,7 @@ SV_ExecuteUserCommand
 */
 static void SV_ExecuteClientCommand( sv_client_t *cl, const char *s )
 {
-	ucmd_t	*u;
+	const ucmd_t	*u;
 
 	Cmd_TokenizeString( s );
 
@@ -3148,17 +3150,14 @@ connectionless packets.
 */
 void SV_ConnectionlessPacket( netadr_t from, sizebuf_t *msg )
 {
-	char	*args;
-	const char	*pcmd;
-	char buf[MAX_SYSPATH];
-	int	len = sizeof( buf );
+	const char *pcmd, *args;
 
 	// prevent flooding from banned address
-	if( SV_CheckIP( &from ) )
+	if( SV_CheckIP( &from ))
 		return;
 
 	MSG_Clear( msg );
-	MSG_ReadLong( msg );// skip the -1 marker
+	MSG_SeekToBit( msg, sizeof( uint32_t ) << 3, SEEK_CUR ); // skip the -1 marker
 
 	args = MSG_ReadStringLine( msg );
 	Cmd_TokenizeString( args );
@@ -3168,29 +3167,79 @@ void SV_ConnectionlessPacket( netadr_t from, sizebuf_t *msg )
 	if( sv_log_outofband.value )
 		Con_Reportf( "%s: %s : %s\n", __func__, NET_AdrToString( from ), pcmd );
 
-	if( !Q_strcmp( pcmd, "ping" )) SV_Ping( from );
-	else if( !Q_strcmp( pcmd, "ack" )) SV_Ack( from );
-	else if( !Q_strcmp( pcmd, "info" )) SV_Info( from, Q_atoi( Cmd_Argv( 1 )));
-	else if( !Q_strcmp( pcmd, "bandwidth" )) SV_TestBandWidth( from );
-	else if( !Q_strcmp( pcmd, "getchallenge" )) SV_GetChallenge( from );
-	else if( !Q_strcmp( pcmd, "connect" )) SV_ConnectClient( from );
-	else if( !Q_strcmp( pcmd, "rcon" )) SV_RemoteCommand( from, msg );
-	else if( !Q_strcmp( pcmd, "netinfo" )) SV_BuildNetAnswer( from );
-	else if( !Q_strcmp( pcmd, "s" )) SV_AddToMaster( from, msg );
-	else if( !Q_strcmp( pcmd, "i" )) NET_SendPacket( NS_SERVER, 5, "\xFF\xFF\xFF\xFFj", from ); // A2A_PING
-	else if( SV_SourceQuery_HandleConnnectionlessPacket( pcmd, from )) { } // function handles replies
-	else if( !Q_strcmp( pcmd, "c" ) && sv_nat.value && NET_IsMasterAdr( from ))
+	if( !svs.initialized )
 	{
-		netadr_t to;
-		if( NET_StringToAdr( Cmd_Argv( 1 ), &to ) && !NET_IsReservedAdr( to ))
-			SV_Info( to, PROTOCOL_VERSION );
+		// only process rcon if server not initialized
+		if( !Q_strcmp( pcmd, C2S_RCON ))
+			SV_RemoteCommand( net_from, &net_message );
+
+		return;
 	}
-	else if( svgame.dllFuncs.pfnConnectionlessPacket( &from, args, buf, &len ))
+
+	if( !Q_strcmp( pcmd, A2S_GOLDSRC_INFO ) || pcmd[0] == A2S_GOLDSRC_PLAYERS || pcmd[0] == A2S_GOLDSRC_RULES )
 	{
-		// user out of band message (must be handled in CL_ConnectionlessPacket)
-		if( len > 0 ) Netchan_OutOfBand( NS_SERVER, from, len, (byte*)buf );
+		SV_SourceQuery_HandleConnnectionlessPacket( pcmd, from );
 	}
-	else Con_DPrintf( S_ERROR "bad connectionless packet from %s:\n%s\n", NET_AdrToString( from ), args );
+	else if( !Q_strcmp( pcmd, A2A_NETINFO ))
+	{
+		SV_BuildNetAnswer( from );
+	}
+	else if( !Q_strcmp( pcmd, A2A_INFO ))
+	{
+		SV_Info( from, Q_atoi( Cmd_Argv( 1 )));
+	}
+	else if( !Q_strcmp( pcmd, M2S_CHALLENGE ))
+	{
+		SV_AddToMaster( from, msg );
+	}
+	else if( !Q_strcmp( pcmd, M2S_NAT_CONNECT ))
+	{
+		SV_ConnectNatClient( from );
+	}
+	else if( !Q_strcmp( pcmd, C2S_BANDWIDTHTEST ))
+	{
+		SV_TestBandWidth( from );
+	}
+	else if( !Q_strcmp( pcmd, C2S_GETCHALLENGE ))
+	{
+		SV_GetChallenge( from );
+	}
+	else if( !Q_strcmp( pcmd, C2S_CONNECT ))
+	{
+		SV_ConnectClient( from );
+	}
+	else if( !Q_strcmp( pcmd, A2A_PING ))
+	{
+		Netchan_OutOfBandPrint( NS_SERVER, from, A2A_ACK );
+	}
+	else if( !Q_strcmp( pcmd, A2A_GOLDSRC_PING ))
+	{
+		Netchan_OutOfBandPrint( NS_SERVER, from, A2A_GOLDSRC_ACK );
+	}
+	else if( !Q_strcmp( pcmd, C2S_RCON ))
+	{
+		SV_RemoteCommand( from, msg );
+	}
+	else if( !Q_strcmp( pcmd, A2A_ACK ) || !Q_strcmp( pcmd, A2A_GOLDSRC_ACK ))
+	{
+		SV_Ack( from );
+	}
+	else
+	{
+		char buf[MAX_SYSPATH];
+		int	len = sizeof( buf );
+
+		if( svgame.dllFuncs.pfnConnectionlessPacket( &from, args, buf, &len ))
+		{
+			// user out of band message (must be handled in CL_ConnectionlessPacket)
+			if( len > 0 )
+				Netchan_OutOfBand( NS_SERVER, from, len, (byte*)buf );
+		}
+		else
+		{
+			Con_DPrintf( S_ERROR "bad connectionless packet from %s:\n%s\n", NET_AdrToString( from ), args );
+		}
+	}
 }
 
 /*

@@ -18,7 +18,7 @@ GNU General Public License for more details.
 #include "gl_local.h"
 #include "gl_export.h"
 
-#ifdef XASH_GL4ES
+#if XASH_GL4ES
 #include "gl4es/include/gl4esinit.h"
 #endif
 
@@ -59,13 +59,16 @@ CL_FillRGBA
 
 =============
 */
-static void CL_FillRGBA( float _x, float _y, float _w, float _h, int r, int g, int b, int a )
+static void CL_FillRGBA( int rendermode, float _x, float _y, float _w, float _h, byte r, byte g, byte b, byte a )
 {
 	pglDisable( GL_TEXTURE_2D );
 	pglEnable( GL_BLEND );
 	pglTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	pglBlendFunc( GL_SRC_ALPHA, GL_ONE );
-	pglColor4f( r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f );
+	if( rendermode == kRenderTransAdd )
+		pglBlendFunc( GL_SRC_ALPHA, GL_ONE );
+	else
+		pglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	pglColor4ub( r, g, b, a );
 
 	pglBegin( GL_QUADS );
 		pglVertex2f( _x, _y );
@@ -74,33 +77,6 @@ static void CL_FillRGBA( float _x, float _y, float _w, float _h, int r, int g, i
 		pglVertex2f( _x, _y + _h );
 	pglEnd ();
 
-	pglColor3f( 1.0f, 1.0f, 1.0f );
-	pglEnable( GL_TEXTURE_2D );
-	pglDisable( GL_BLEND );
-}
-
-/*
-=============
-pfnFillRGBABlend
-
-=============
-*/
-static void GAME_EXPORT CL_FillRGBABlend( float _x, float _y, float _w, float _h, int r, int g, int b, int a )
-{
-	pglDisable( GL_TEXTURE_2D );
-	pglEnable( GL_BLEND );
-	pglTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	pglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	pglColor4f( r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f );
-
-	pglBegin( GL_QUADS );
-		pglVertex2f( _x, _y );
-		pglVertex2f( _x + _w, _y );
-		pglVertex2f( _x + _w, _y + _h );
-		pglVertex2f( _x, _y + _h );
-	pglEnd ();
-
-	pglColor3f( 1.0f, 1.0f, 1.0f );
 	pglEnable( GL_TEXTURE_2D );
 	pglDisable( GL_BLEND );
 }
@@ -420,7 +396,7 @@ static void GAME_EXPORT R_OverrideTextureSourceSize( unsigned int texnum, uint s
 
 static void* GAME_EXPORT R_GetProcAddress( const char *name )
 {
-#ifdef XASH_GL4ES
+#if XASH_GL4ES
 	return gl4es_GetProcAddress( name );
 #else // TODO: other wrappers
 	return gEngfuncs.GL_GetProcAddress( name );
@@ -471,9 +447,7 @@ static const ref_interface_t gReffuncs =
 	R_Set2DMode,
 	R_DrawStretchRaw,
 	R_DrawStretchPic,
-	R_DrawTileClear,
 	CL_FillRGBA,
-	CL_FillRGBABlend,
 	R_WorldToScreen,
 
 	VID_ScreenShot,
@@ -497,7 +471,6 @@ static const ref_interface_t gReffuncs =
 	R_GetSpriteParms,
 	R_GetSpriteTexture,
 
-	Mod_LoadMapSprite,
 	Mod_ProcessRenderData,
 	Mod_StudioLoadTextures,
 

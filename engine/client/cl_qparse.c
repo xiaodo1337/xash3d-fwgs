@@ -431,7 +431,7 @@ static void CL_ParseQuakeEntityData( sizebuf_t *msg, int bits )
 		cls.signon = SIGNONS;
 
 		// Clear loading plaque.
-		CL_SignonReply ();
+		CL_SignonReply( PROTO_QUAKE );
 	}
 
 	// alloc next slot to store update
@@ -626,7 +626,7 @@ CL_ParseStaticEntity
 
 ===================
 */
-static void CL_ParseStaticEntity( sizebuf_t *msg )
+static void CL_ParseQuakeStaticEntity( sizebuf_t *msg )
 {
 	entity_state_t	state;
 	cl_entity_t	*ent;
@@ -950,7 +950,7 @@ void CL_ParseQuakeMessage( sizebuf_t *msg )
 			break;
 		case svc_time:
 			Cbuf_AddText( "\n" ); // new frame was started
-			CL_ParseServerTime( msg );
+			CL_ParseServerTime( msg, PROTO_QUAKE );
 			break;
 		case svc_print:
 			str = MSG_ReadString( msg );
@@ -1006,7 +1006,7 @@ void CL_ParseQuakeMessage( sizebuf_t *msg )
 			CL_ParseQuakeDamage( msg );
 			break;
 		case svc_spawnstatic:
-			CL_ParseStaticEntity( msg );
+			CL_ParseQuakeStaticEntity( msg );
 			break;
 		case svc_spawnbinary:
 			// never used in Quake

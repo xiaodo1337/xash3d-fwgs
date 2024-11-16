@@ -396,6 +396,9 @@ void Voice_RecordStart( void )
 {
 	Voice_RecordStop();
 
+	if( !voice.initialized )
+		return;
+
 	if( voice_inputfromfile.value )
 	{
 		voice.input_file = FS_LoadSound( "voice_input.wav", NULL, 0 );
@@ -415,7 +418,7 @@ void Voice_RecordStart( void )
 		}
 	}
 
-	if( !Voice_IsRecording() )
+	if( !Voice_IsRecording( ) && voice.device_opened )
 		voice.is_recording = VoiceCapture_Activate( true );
 
 	if( Voice_IsRecording() )
@@ -627,7 +630,8 @@ qboolean Voice_Init( const char *pszCodecName, int quality, qboolean preinit )
 {
 	if( Q_strcmp( pszCodecName, VOICE_OPUS_CUSTOM_CODEC ))
 	{
-		Con_Printf( S_ERROR "Server requested unsupported codec: %s\n", pszCodecName );
+		if( COM_CheckStringEmpty( pszCodecName ))
+			Con_Printf( S_ERROR "Server requested unsupported codec: %s\n", pszCodecName );
 
 		// reset saved codec name, we won't enable voice for this connection
 		voice_codec_init[0] = 0;

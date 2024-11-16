@@ -204,7 +204,7 @@ void VOX_FreeWord( channel_t *ch )
 	ch->currentWord = NULL;
 	memset( &ch->pMixer, 0, sizeof( ch->pMixer ));
 
-	if( !word->sfx && !word->fKeepCached )
+	if( !word->sfx || word->fKeepCached )
 		return;
 
 	FS_FreeSound( word->sfx->cache );
@@ -247,6 +247,12 @@ static const char *VOX_GetDirectory( char *szpath, const char *psz, int nsize )
 {
 	const char *p;
 	int len;
+
+	// HACKHACK: some modders send strings like "/fvox/_period four"
+	// which should get parsed as "_period four" said by fvox
+	// it might be incorrect but ignore first slash here for now
+	if( psz[0] == '/' )
+		psz++;
 
 	// search / backwards
 	p = Q_strrchr( psz, '/' );
@@ -595,8 +601,8 @@ static void Test_VOX_GetDirectory( void )
 	{
 		"", "", "vox/",
 		"bark bark", "bark bark", "vox/",
-		"barney/meow", "meow", "barney/"
-
+		"barney/meow", "meow", "barney/",
+		"/fvox/_period", "_period", "fvox/",
 	};
 	int i;
 

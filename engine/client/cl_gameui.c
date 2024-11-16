@@ -679,10 +679,8 @@ static void GAME_EXPORT pfnFillRGBA( int x, int y, int width, int height, int r,
 	g = bound( 0, g, 255 );
 	b = bound( 0, b, 255 );
 	a = bound( 0, a, 255 );
-	ref.dllFuncs.Color4ub( r, g, b, a );
-	ref.dllFuncs.GL_SetRenderMode( kRenderTransTexture );
-	ref.dllFuncs.R_DrawStretchPic( x, y, width, height, 0, 0, 1, 1, R_GetBuiltinTexture( REF_WHITE_TEXTURE ) );
-	ref.dllFuncs.Color4ub( 255, 255, 255, 255 );
+
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x, y, width, height, r, g, b, a );
 }
 
 /*
@@ -1303,6 +1301,16 @@ static gameinfo2_t *pfnGetModInfo( int gi_version, int i )
 	return &gameui.modsInfo[i];
 }
 
+static int pfnIsCvarReadOnly( const char *name )
+{
+	convar_t *cv = Cvar_FindVar( name );
+
+	if( !cv )
+		return -1;
+
+	return FBitSet( cv->flags, FCVAR_READ_ONLY ) ? 1 : 0;
+}
+
 static ui_extendedfuncs_t gExtendedfuncs =
 {
 	pfnEnableTextInput,
@@ -1318,6 +1326,7 @@ static ui_extendedfuncs_t gExtendedfuncs =
 	&gNetApi,
 	pfnGetGameInfo,
 	pfnGetModInfo,
+	pfnIsCvarReadOnly,
 };
 
 void UI_UnloadProgs( void )

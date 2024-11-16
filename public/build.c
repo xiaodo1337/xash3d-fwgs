@@ -119,6 +119,10 @@ const char *Q_PlatformStringByID( const int platform )
 		return "nswitch";
 	case PLATFORM_PSVITA:
 		return "psvita";
+	case PLATFORM_WASI:
+		return "wasi";
+	case PLATFORM_SUNOS:
+		return "sunos";
 	}
 
 	assert( 0 );
@@ -204,6 +208,8 @@ const char *Q_ArchitectureStringByID( const int arch, const uint abi, const int 
 			return is64 ? "riscv64d" : "riscv32d";
 		}
 		break;
+	case ARCHITECTURE_WASM:
+		return is64 ? "wasm64" : "wasm32";
 	}
 
 	assert( 0 );

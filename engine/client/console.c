@@ -875,7 +875,6 @@ void Con_Print( const char *txt )
 			Con_DeleteLastLine();
 			cr_pending = 0;
 		}
-
 		c = *txt;
 
 		switch( c )
@@ -883,10 +882,13 @@ void Con_Print( const char *txt )
 		case '\0':
 			break;
 		case '\r':
-			Con_AddLine( buf, bufpos, true );
-			lastlength = CON_LINES_LAST().length;
-			cr_pending = 1;
-			bufpos = 0;
+			if( txt[1] != '\n' )
+			{
+				Con_AddLine( buf, bufpos, true );
+				lastlength = CON_LINES_LAST().length;
+				cr_pending = 1;
+				bufpos = 0;
+			}
 			break;
 		case '\n':
 			Con_AddLine( buf, bufpos, true );
@@ -894,6 +896,7 @@ void Con_Print( const char *txt )
 			bufpos = 0;
 			break;
 		default:
+
 			buf[bufpos++] = c | mask;
 			if(( bufpos >= sizeof( buf ) - 1 ) || bufpos >= ( con.linewidth - 1 ))
 			{
@@ -1715,7 +1718,7 @@ void Con_DrawDebug( void )
 			host.downloadcount, host.downloadfile, scr_download.value, Sys_DoubleTime() - timeStart );
 
 		Con_DrawStringLen( dlstring, &length, NULL );
-		length = Q_max( length, 500 );
+		length = Q_max( length, 300 );
 		x = refState.width - length * 1.05f;
 		y = con.curFont->charHeight * 1.05f;
 		Con_DrawString( x, y, dlstring, g_color_table[7] );
@@ -1941,7 +1944,7 @@ void Con_DrawConsole( void )
 	{
 		if( !cl_allow_levelshots.value && !cls.timedemo )
 		{
-			if(( Cvar_VariableInteger( "cl_background" ) || Cvar_VariableInteger( "sv_background" )) && cls.key_dest != key_console )
+			if( cls.key_dest != key_console && ( Cvar_VariableInteger( "cl_background" ) || Cvar_VariableInteger( "sv_background" )))
 				con.vislines = con.showlines = 0;
 			else con.vislines = con.showlines = refState.height;
 		}

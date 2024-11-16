@@ -118,8 +118,9 @@ typedef enum
 #include "fscallback.h"
 
 // PERFORMANCE INFO
-#define MIN_FPS         20.0f		// host minimum fps value for maxfps.
-#define MAX_FPS         200.0f		// upper limit for maxfps.
+#define MIN_FPS         20.0f    // host minimum fps value for maxfps.
+#define MAX_FPS_SOFT    200.0f   // soft limit for maxfps.
+#define MAX_FPS_HARD    1000.0f  // multiplayer hard limit for maxfps.
 #define HOST_FPS		100.0f		// multiplayer games typical fps
 
 #define MAX_FRAMETIME	0.25f
@@ -164,10 +165,12 @@ extern convar_t	host_allow_materials;
 extern convar_t	host_developer;
 extern convar_t	host_limitlocal;
 extern convar_t	host_maxfps;
+extern convar_t	fps_override;
 extern convar_t	sys_timescale;
 extern convar_t	cl_filterstuffcmd;
 extern convar_t	rcon_password;
 extern convar_t	hpk_custom_file;
+extern convar_t	con_gamemaps;
 
 #define Mod_AllowMaterials() ( host_allow_materials.value != 0.0f && !FBitSet( host.features, ENGINE_DISABLE_HDTEXTURES ))
 
@@ -414,15 +417,15 @@ byte *FS_LoadDirectFile( const char *path, fs_offset_t *filesizeptr )
 //
 void Cbuf_Clear( void );
 void Cbuf_AddText( const char *text );
-void Cbuf_AddTextf( const char *text, ... ) _format( 1 );
+void Cbuf_AddTextf( const char *text, ... ) FORMAT_CHECK( 1 );
 void Cbuf_AddFilteredText( const char *text );
 void Cbuf_InsertText( const char *text );
 void Cbuf_ExecStuffCmds( void );
 void Cbuf_Execute (void);
 qboolean Cmd_CurrentCommandIsPrivileged( void );
 int Cmd_Argc( void );
-const char *Cmd_Args( void );
-const char *Cmd_Argv( int arg );
+const char *Cmd_Args( void ) RETURNS_NONNULL;
+const char *Cmd_Argv( int arg ) RETURNS_NONNULL;
 void Cmd_Init( void );
 void Cmd_Unlink( int group );
 void Cmd_AddCommand( const char *cmd_name, xcommand_t function, const char *cmd_desc );
@@ -528,16 +531,15 @@ typedef void( *pfnChangeGame )( const char *progname );
 qboolean Host_IsQuakeCompatible( void );
 void EXPORT Host_Shutdown( void );
 int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGame, pfnChangeGame func );
-int Host_CompareFileTime( int ft1, int ft2 );
-void Host_EndGame( qboolean abort, const char *message, ... ) _format( 2 );
+void Host_EndGame( qboolean abort, const char *message, ... ) FORMAT_CHECK( 2 );
 void Host_AbortCurrentFrame( void ) NORETURN;
 void Host_WriteServerConfig( const char *name );
 void Host_WriteOpenGLConfig( void );
 void Host_WriteVideoConfig( void );
 void Host_WriteConfig( void );
 void Host_ShutdownServer( void );
-void Host_Error( const char *error, ... ) _format( 1 );
-void Host_ValidateEngineFeatures( uint32_t features );
+void Host_Error( const char *error, ... ) FORMAT_CHECK( 1 );
+void Host_ValidateEngineFeatures( uint32_t mask, uint32_t features );
 void Host_Frame( double time );
 void Host_Credits( void );
 
@@ -593,9 +595,9 @@ int COM_CheckParm( char *parm, char **ppnext );
 void pfnGetGameDir( char *szGetGameDir );
 int pfnGetModelType( model_t *mod );
 int pfnIsMapValid( char *filename );
-void Con_Reportf( const char *szFmt, ... ) _format( 1 );
-void Con_DPrintf( const char *fmt, ... ) _format( 1 );
-void Con_Printf( const char *szFmt, ... ) _format( 1 );
+void Con_Reportf( const char *szFmt, ... ) FORMAT_CHECK( 1 );
+void Con_DPrintf( const char *fmt, ... ) FORMAT_CHECK( 1 );
+void Con_Printf( const char *szFmt, ... ) FORMAT_CHECK( 1 );
 int pfnNumberOfEntities( void );
 int pfnIsInGame( void );
 float pfnTime( void );
@@ -670,6 +672,15 @@ void HPAK_FlushHostQueue( void );
 #define INPUT_DEVICE_JOYSTICK (1<<2)
 #define INPUT_DEVICE_VR (1<<3)
 
+
+typedef enum connprotocol_e
+{
+	PROTO_CURRENT = 0, // Xash3D 49
+	PROTO_LEGACY, // Xash3D 48
+	PROTO_QUAKE, // Quake 15
+	PROTO_GOLDSRC, // GoldSrc 48
+} connprotocol_t;
+
 // shared calls
 struct physent_s;
 struct sv_client_s;
@@ -680,7 +691,6 @@ qboolean CL_IsThirdPerson( void );
 qboolean CL_IsIntermission( void );
 qboolean CL_Initialized( void );
 char *CL_Userinfo( void );
-void CL_LegacyUpdateInfo( void );
 void CL_CharEvent( int key );
 qboolean CL_DisableVisibility( void );
 byte *COM_LoadFile( const char *filename, int usehunk, int *pLength ) MALLOC_LIKE( free, 1 );
@@ -688,12 +698,12 @@ struct cmd_s *Cmd_GetFirstFunctionHandle( void );
 struct cmd_s *Cmd_GetNextFunctionHandle( struct cmd_s *cmd );
 struct cmdalias_s *Cmd_AliasGetList( void );
 const char *Cmd_GetName( struct cmd_s *cmd );
-void Log_Printf( const char *fmt, ... ) _format( 1 );
-void SV_BroadcastCommand( const char *fmt, ... ) _format( 1 );
-void SV_BroadcastPrintf( struct sv_client_s *ignore, const char *fmt, ... ) _format( 2 );
+void Log_Printf( const char *fmt, ... ) FORMAT_CHECK( 1 );
+void SV_BroadcastCommand( const char *fmt, ... ) FORMAT_CHECK( 1 );
+void SV_BroadcastPrintf( struct sv_client_s *ignore, const char *fmt, ... ) FORMAT_CHECK( 2 );
 void CL_ClearStaticEntities( void );
 qboolean S_StreamGetCurrentState( char *currentTrack, size_t currentTrackSize, char *loopTrack, size_t loopTrackSize, int *position );
-void CL_ServerCommand( qboolean reliable, const char *fmt, ... ) _format( 2 );
+void CL_ServerCommand( qboolean reliable, const char *fmt, ... ) FORMAT_CHECK( 2 );
 void CL_UpdateInfo( const char *key, const char *value );
 void CL_HudMessage( const char *pMessage );
 const char *CL_MsgInfo( int cmd );
@@ -732,15 +742,15 @@ int SCR_GetAudioChunk( char *rawdata, int length );
 wavdata_t *SCR_GetMovieInfo( void );
 void SCR_Shutdown( void );
 void Con_Print( const char *txt );
-void Con_NPrintf( int idx, const char *fmt, ... ) _format( 2 );
-void Con_NXPrintf( con_nprint_t *info, const char *fmt, ... ) _format( 2 );
-void UI_NPrintf( int idx, const char *fmt, ... ) _format( 2 );
-void UI_NXPrintf( con_nprint_t *info, const char *fmt, ... ) _format( 2 );
+void Con_NPrintf( int idx, const char *fmt, ... ) FORMAT_CHECK( 2 );
+void Con_NXPrintf( con_nprint_t *info, const char *fmt, ... ) FORMAT_CHECK( 2 );
+void UI_NPrintf( int idx, const char *fmt, ... ) FORMAT_CHECK( 2 );
+void UI_NXPrintf( con_nprint_t *info, const char *fmt, ... ) FORMAT_CHECK( 2 );
 const char *Info_ValueForKey( const char *s, const char *key );
 void Info_RemovePrefixedKeys( char *start, char prefix );
 qboolean Info_RemoveKey( char *s, const char *key );
 qboolean Info_SetValueForKey( char *s, const char *key, const char *value, int maxsize );
-qboolean Info_SetValueForKeyf( char *s, const char *key, int maxsize, const char *format, ... ) _format( 4 );
+qboolean Info_SetValueForKeyf( char *s, const char *key, int maxsize, const char *format, ... ) FORMAT_CHECK( 4 );
 qboolean Info_SetValueForStarKey( char *s, const char *key, const char *value, int maxsize );
 qboolean Info_IsValid( const char *s );
 void Info_WriteVars( file_t *f );
@@ -749,10 +759,10 @@ int Cmd_CheckMapsList( int fRefresh );
 void COM_SetRandomSeed( int lSeed );
 int COM_RandomLong( int lMin, int lMax );
 float COM_RandomFloat( float fMin, float fMax );
-qboolean LZSS_IsCompressed( const byte *source );
-uint LZSS_GetActualSize( const byte *source );
+qboolean LZSS_IsCompressed( const byte *source, size_t input_len );
+uint LZSS_GetActualSize( const byte *source, size_t input_len );
 byte *LZSS_Compress( byte *pInput, int inputLength, uint *pOutputSize );
-uint LZSS_Decompress( const byte *pInput, byte *pOutput );
+uint LZSS_Decompress( const byte *pInput, byte *pOutput, size_t input_len, size_t output_len );
 void GL_FreeImage( const char *name );
 void VID_InitDefaultResolution( void );
 void VID_Init( void );
@@ -761,12 +771,33 @@ void UI_ShowConnectionWarning( void );
 void Cmd_Null_f( void );
 void Rcon_Print( host_redirect_t *rd, const char *pMsg );
 qboolean COM_ParseVector( char **pfile, float *v, size_t size );
-void COM_NormalizeAngles( vec3_t angles );
 int COM_FileSize( const char *filename );
 void COM_FreeFile( void *buffer );
 int COM_CompareFileTime( const char *filename1, const char *filename2, int *iCompare );
-char *va( const char *format, ... ) _format( 1 );
+char *va( const char *format, ... ) FORMAT_CHECK( 1 ) RETURNS_NONNULL;
 qboolean CRC32_MapFile( dword *crcvalue, const char *filename, qboolean multiplayer );
+
+static inline void COM_NormalizeAngles( vec3_t angles )
+{
+	int i;
+
+	for( i = 0; i < 3; i++ )
+	{
+		if( angles[i] > 180.0f )
+			angles[i] -= 360.0f;
+		else if( angles[i] < -180.0f )
+			angles[i] += 360.0f;
+	}
+}
+
+#if !XASH_DEDICATED
+connprotocol_t CL_Protocol( void );
+#else
+static inline connprotocol_t CL_Protocol( void )
+{
+	return PROTO_CURRENT;
+}
+#endif
 
 static inline qboolean Host_IsLocalGame( void )
 {
@@ -791,12 +822,12 @@ void S_StopAllSounds( qboolean ambient );
 // gamma routines
 byte LightToTexGamma( byte b );
 byte TextureToGamma( byte );
-uint LightToTexGammaEx( uint );
 uint ScreenGammaTable( uint );
 uint LinearGammaTable( uint );
 void V_Init( void );
 void V_CheckGamma( void );
 void V_CheckGammaEnd( void );
+intptr_t V_GetGammaPtr( int parm );
 
 //
 // identification.c
@@ -816,6 +847,16 @@ void NET_MasterHeartbeat( void );
 void NET_MasterClear( void );
 void NET_MasterShutdown( void );
 qboolean NET_GetMaster( netadr_t from, uint *challenge, double *last_heartbeat );
+
+//
+// munge.c
+//
+void COM_Munge( byte *data, size_t len, int seq );
+void COM_UnMunge( byte *data, size_t len, int seq );
+void COM_Munge2( byte *data, size_t len, int seq );
+void COM_UnMunge2( byte *data, size_t len, int seq );
+void COM_Munge3( byte *data, size_t len, int seq );
+void COM_UnMunge3( byte *data, size_t len, int seq );
 
 //
 // sounds.c

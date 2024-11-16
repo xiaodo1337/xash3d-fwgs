@@ -53,11 +53,13 @@ size_t Q_colorstr( const char *string )
 	return len;
 }
 
-static int Q_atoi_hex( int sign, const char *str )
+int Q_atoi_hex( int sign, const char *str )
 {
 	int c, val = 0;
 
-	str += 2;
+	if( str[0] == '0' && ( str[1] == 'x' || str[1] == 'X' ))
+		str += 2;
+
 	while( 1 )
 	{
 		c = *str++;
@@ -318,7 +320,9 @@ const char* Q_timestamp( int format )
 		// Build a timestamp that can use for filename (ex: "Nov2006-26 (19.14.28)");
 		strftime( timestamp, sizeof( timestamp ), "%b%Y-%d_%H.%M.%S", crt_tm );
 		break;
-	default: return NULL;
+	default:
+		Q_snprintf( timestamp, sizeof( timestamp ), "%s: unknown format %d", __func__, format );
+		break;
 	}
 
 	return timestamp;
@@ -700,33 +704,6 @@ void COM_PathSlashFix( char *path )
 		path[len] = '/';
 		path[len + 1] = '\0';
 	}
-}
-
-/*
-============
-COM_Hex2Char
-============
-*/
-char COM_Hex2Char( uint8_t hex )
-{
-	if( hex >= 0x0 && hex <= 0x9 )
-		hex += '0';
-	else if( hex >= 0xA && hex <= 0xF )
-		hex += '7';
-
-	return (char)hex;
-}
-
-/*
-============
-COM_Hex2String
-============
-*/
-void COM_Hex2String( uint8_t hex, char *str )
-{
-	*str++ = COM_Hex2Char( hex >> 4 );
-	*str++ = COM_Hex2Char( hex & 0x0F );
-	*str = '\0';
 }
 
 /*

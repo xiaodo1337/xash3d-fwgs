@@ -342,7 +342,8 @@ static const ref_api_t gEngfuncs =
 	Mod_SampleSizeForFace,
 	Mod_BoxVisible,
 	Mod_PointInLeaf,
-	Mod_CreatePolygonsForHull,
+	R_DrawWorldHull,
+	R_DrawModelHull,
 
 	R_StudioGetAnim,
 	pfnStudioEvent,
@@ -400,15 +401,6 @@ static const ref_api_t gEngfuncs =
 	SW_LockBuffer,
 	SW_UnlockBuffer,
 
-	LightToTexGamma,
-	LightToTexGammaEx,
-	TextureToGamma,
-	ScreenGammaTable,
-	LinearGammaTable,
-
-	CL_GetLightStyle,
-	CL_GetDynamicLight,
-	CL_GetEntityLight,
 	R_FatPVS,
 	GL_GetOverviewParms,
 	Sys_DoubleTime,

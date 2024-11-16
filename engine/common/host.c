@@ -40,7 +40,7 @@ GNU General Public License for more details.
 #include "render_api.h"	// decallist_t
 #include "tests.h"
 
-pfnChangeGame	pChangeGame = NULL;
+static pfnChangeGame	pChangeGame = NULL;
 host_parm_t		host;	// host parms
 
 #ifdef XASH_ENGINE_TESTS
@@ -49,13 +49,14 @@ struct tests_stats_s tests_stats;
 
 CVAR_DEFINE( host_developer, "developer", "0", FCVAR_FILTERABLE, "engine is in development-mode" );
 CVAR_DEFINE_AUTO( sys_timescale, "1.0", FCVAR_FILTERABLE, "scale frame time" );
-CVAR_DEFINE_AUTO( sys_ticrate, "100", FCVAR_SERVER, "framerate in dedicated mode" );
 
+static CVAR_DEFINE_AUTO( sys_ticrate, "100", FCVAR_SERVER, "framerate in dedicated mode" );
 static CVAR_DEFINE_AUTO( host_serverstate, "0", FCVAR_READ_ONLY, "displays current server state" );
 static CVAR_DEFINE_AUTO( host_gameloaded, "0", FCVAR_READ_ONLY, "inidcates a loaded game.dll" );
 static CVAR_DEFINE_AUTO( host_clientloaded, "0", FCVAR_READ_ONLY, "inidcates a loaded client.dll" );
 CVAR_DEFINE_AUTO( host_limitlocal, "0", 0, "apply cl_cmdrate and rate to loopback connection" );
 CVAR_DEFINE( host_maxfps, "fps_max", "72", FCVAR_ARCHIVE|FCVAR_FILTERABLE, "host fps upper limit" );
+CVAR_DEFINE_AUTO( fps_override, "1", FCVAR_FILTERABLE, "unlock higher framerate values, not supported" );
 static CVAR_DEFINE_AUTO( host_framerate, "0", FCVAR_FILTERABLE, "locks frame timing to this value in seconds" );
 static CVAR_DEFINE( host_sleeptime, "sleeptime", "1", FCVAR_ARCHIVE|FCVAR_FILTERABLE, "milliseconds to sleep for each frame. higher values reduce fps accuracy" );
 static CVAR_DEFINE_AUTO( host_sleeptime_debug, "0", 0, "print sleeps between frames" );
@@ -69,14 +70,14 @@ typedef struct feature_message_s
 	const char *arg;
 } feature_message_t;
 
-static feature_message_t bugcomp_features[] =
+static const feature_message_t bugcomp_features[] =
 {
 { BUGCOMP_PENTITYOFENTINDEX_FLAG, "pfnPEntityOfEntIndex bugfix revert", "peoei" },
 { BUGCOMP_MESSAGE_REWRITE_FACILITY_FLAG, "GoldSrc Message Rewrite Facility", "gsmrf" },
 { BUGCOMP_SPATIALIZE_SOUND_WITH_ATTN_NONE, "spatialize sounds with zero attenuation", "sp_attn_none" },
 };
 
-static feature_message_t engine_features[] =
+static const feature_message_t engine_features[] =
 {
 { ENGINE_WRITE_LARGE_COORD, "Big World Support" },
 { ENGINE_QUAKE_COMPATIBLE, "Quake Compatibility" },
@@ -200,19 +201,6 @@ static void Sys_PrintUsage( const char *exename )
 	Sys_Quit();
 }
 
-int Host_CompareFileTime( int ft1, int ft2 )
-{
-	if( ft1 < ft2 )
-	{
-		return -1;
-	}
-	else if( ft1 > ft2 )
-	{
-		return 1;
-	}
-	return 0;
-}
-
 void Host_ShutdownServer( void )
 {
 	SV_Shutdown( "Server was killed\n" );
@@ -223,7 +211,7 @@ void Host_ShutdownServer( void )
 Host_PrintEngineFeatures
 ================
 */
-static void Host_PrintFeatures( uint32_t flags,	const char *s, feature_message_t *features, size_t size )
+static void Host_PrintFeatures( uint32_t flags, const char *s, const feature_message_t *features, size_t size )
 {
 	size_t i;
 
@@ -241,15 +229,8 @@ Host_ValidateEngineFeatures
 validate features bits and set host.features
 ==============
 */
-void Host_ValidateEngineFeatures( uint32_t features )
+void Host_ValidateEngineFeatures( uint32_t mask, uint32_t features )
 {
-	uint32_t mask = ENGINE_FEATURES_MASK;
-
-#if !XASH_DEDICATED
-	if( !Host_IsDedicated( ) && cls.legacymode )
-		mask = ENGINE_LEGACY_FEATURES_MASK;
-#endif
-
 	// don't allow unsupported bits
 	features &= mask;
 
@@ -610,13 +591,19 @@ static double Host_CalcFPS( void )
 		if( !gl_vsync.value )
 			fps = host_maxfps.value;
 	}
+	else if( !SV_Active() && CL_Protocol() == PROTO_GOLDSRC && cls.state != ca_disconnected && cls.state < ca_validate )
+	{
+		return 31.0;
+	}
 	else
 	{
 		if( !gl_vsync.value )
 		{
+			double max_fps = fps_override.value ? MAX_FPS_HARD : MAX_FPS_SOFT;
+
 			fps = host_maxfps.value;
-			if( fps == 0.0 ) fps = MAX_FPS;
-			fps = bound( MIN_FPS, fps, MAX_FPS );
+			if( fps == 0.0 ) fps = max_fps;
+			fps = bound( MIN_FPS, fps, max_fps );
 		}
 	}
 #endif
@@ -635,7 +622,7 @@ static qboolean Host_Autosleep( double dt, double scale )
 		return true;
 
 	// limit fps to withing tolerable range
-	fps = bound( MIN_FPS, fps, MAX_FPS );
+	fps = bound( MIN_FPS, fps, MAX_FPS_HARD );
 
 	if( Host_IsDedicated( ))
 		targetframetime = ( 1.0 / ( fps + 1.0 ));
@@ -1061,7 +1048,7 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 
 	if( Sys_GetParmFromCmdLine( "-sys_ticrate", ticrate ))
 	{
-		double fps = bound( MIN_FPS, atof( ticrate ), MAX_FPS );
+		double fps = bound( MIN_FPS, atof( ticrate ), MAX_FPS_HARD );
 		Cvar_SetValue( "sys_ticrate", fps );
 	}
 
@@ -1072,6 +1059,9 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 		Host_RunTests( 0 );
 #endif
 
+#if XASH_DEDICATED
+	Platform_SetupSigtermHandling();
+#endif
 	Platform_Init( Host_IsDedicated( ) || developer >= DEV_EXTENDED );
 	FS_Init( basedir );
 
@@ -1157,6 +1147,7 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
 	Cvar_RegisterVariable( &host_allow_materials );
 	Cvar_RegisterVariable( &host_serverstate );
 	Cvar_RegisterVariable( &host_maxfps );
+	Cvar_RegisterVariable( &fps_override );
 	Cvar_RegisterVariable( &host_framerate );
 	Cvar_RegisterVariable( &host_sleeptime );
 	Cvar_RegisterVariable( &host_sleeptime_debug );

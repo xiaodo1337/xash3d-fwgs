@@ -34,10 +34,10 @@ GNU General Public License for more details.
 #define MAX_TEXTCHANNELS	8		// must be power of two (GoldSrc uses 4 channels)
 #define TEXT_MSGNAME	"TextMessage%i"
 
-char			cl_textbuffer[MAX_TEXTCHANNELS][2048];
-client_textmessage_t	cl_textmessage[MAX_TEXTCHANNELS];
+static char cl_textbuffer[MAX_TEXTCHANNELS][2048];
+static client_textmessage_t cl_textmessage[MAX_TEXTCHANNELS];
 
-static dllfunc_t cdll_exports[] =
+static const dllfunc_t cdll_exports[] =
 {
 { "Initialize", (void **)&clgame.dllFuncs.pfnInitialize },
 { "HUD_VidInit", (void **)&clgame.dllFuncs.pfnVidInit },
@@ -80,7 +80,7 @@ static dllfunc_t cdll_exports[] =
 };
 
 // optional exports
-static dllfunc_t cdll_new_exports[] = 	// allowed only in SDK 2.3 and higher
+static const dllfunc_t cdll_new_exports[] = 	// allowed only in SDK 2.3 and higher
 {
 { "HUD_GetStudioModelInterface", (void **)&clgame.dllFuncs.pfnGetStudioModelInterface },
 { "HUD_DirectorMessage", (void **)&clgame.dllFuncs.pfnDirectorMessage },
@@ -140,11 +140,7 @@ returns true if thirdperson is enabled
 */
 qboolean CL_IsThirdPerson( void )
 {
-	cl.local.thirdperson = clgame.dllFuncs.CL_IsThirdPerson();
-
-	if( cl.local.thirdperson )
-		return true;
-	return false;
+	return clgame.dllFuncs.CL_IsThirdPerson() ? true : false;
 }
 
 /*
@@ -1019,7 +1015,8 @@ void CL_DrawHUD( int state )
 		CL_DrawCrosshair ();
 		CL_DrawCenterPrint ();
 		clgame.dllFuncs.pfnRedraw( cl.time, cl.intermission );
-		CL_DrawLoadingOrPaused( cls.pauseIcon );
+		if( showpause.value )
+			CL_DrawLoadingOrPaused( cls.pauseIcon );
 		break;
 	case CL_LOADING:
 		CL_DrawLoadingOrPaused( cls.loadingBar );
@@ -1168,6 +1165,126 @@ void CL_ClearSpriteTextures( void )
 		clgame.sprites[i].needload = NL_UNREFERENCED;
 }
 
+// it's a Valve default value for LoadMapSprite (probably must be power of two)
+#define MAPSPRITE_SIZE	128
+
+/*
+====================
+Mod_LoadMapSprite
+
+Loading a bitmap image as sprite with multiple frames
+as pieces of input image
+====================
+*/
+static void Mod_LoadMapSprite( model_t *mod, const void *buffer, size_t size, qboolean *loaded )
+{
+	rgbdata_t *pix, temp = { 0 };
+	char texname[128];
+	int i, w, h;
+	int xl, yl;
+	int numframes;
+	msprite_t *psprite;
+	char poolname[MAX_VA_STRING];
+
+	if( loaded ) *loaded = false;
+	Q_snprintf( texname, sizeof( texname ), "#%s", mod->name );
+	Image_SetForceFlags( IL_OVERVIEW );
+	pix = FS_LoadImage( texname, buffer, size );
+	Image_ClearForceFlags();
+	if( !pix ) return; // bad image or something else
+
+	mod->type = mod_sprite;
+
+	if( pix->width % MAPSPRITE_SIZE )
+		w = pix->width - ( pix->width % MAPSPRITE_SIZE );
+	else w = pix->width;
+
+	if( pix->height % MAPSPRITE_SIZE )
+		h = pix->height - ( pix->height % MAPSPRITE_SIZE );
+	else h = pix->height;
+
+	if( w < MAPSPRITE_SIZE ) w = MAPSPRITE_SIZE;
+	if( h < MAPSPRITE_SIZE ) h = MAPSPRITE_SIZE;
+
+	// resample image if needed
+	Image_Process( &pix, w, h, IMAGE_FORCE_RGBA|IMAGE_RESAMPLE, 0.0f );
+
+	w = h = MAPSPRITE_SIZE;
+
+	// check range
+	if( w > pix->width ) w = pix->width;
+	if( h > pix->height ) h = pix->height;
+
+	// determine how many frames we needs
+	numframes = (pix->width * pix->height) / (w * h);
+	Q_snprintf( poolname, sizeof( poolname ), "^2%s^7", mod->name );
+	mod->mempool = Mem_AllocPool( poolname );
+	psprite = Mem_Calloc( mod->mempool, sizeof( msprite_t ) + ( numframes - 1 ) * sizeof( psprite->frames ));
+	mod->cache.data = psprite;	// make link to extradata
+
+	psprite->type = SPR_FWD_PARALLEL_ORIENTED;
+	psprite->texFormat = SPR_ALPHTEST;
+	psprite->numframes = mod->numframes = numframes;
+	psprite->radius = sqrt(((w >> 1) * (w >> 1)) + ((h >> 1) * (h >> 1)));
+
+	mod->mins[0] = mod->mins[1] = -w / 2;
+	mod->maxs[0] = mod->maxs[1] = w / 2;
+	mod->mins[2] = -h / 2;
+	mod->maxs[2] = h / 2;
+
+	// create a temporary pic
+	temp.width = w;
+	temp.height = h;
+	temp.type = pix->type;
+	temp.flags = pix->flags;
+	temp.size = w * h * PFDesc[temp.type].bpp;
+	temp.buffer = Mem_Malloc( mod->mempool, temp.size );
+	temp.palette = NULL;
+
+	// chop the image and upload into video memory
+	for( i = xl = yl = 0; i < numframes; i++ )
+	{
+		mspriteframe_t *pspriteframe;
+		int xh = xl + w, yh = yl + h, x, y, j;
+		int linedelta = ( pix->width - w ) * 4;
+		byte *src = pix->buffer + ( yl * pix->width + xl ) * 4;
+		byte *dst = temp.buffer;
+
+		// cut block from source
+		for( y = yl; y < yh; y++ )
+		{
+			for( x = xl; x < xh; x++ )
+				for( j = 0; j < 4; j++ )
+					*dst++ = *src++;
+			src += linedelta;
+		}
+
+		// build uinque frame name
+		Q_snprintf( texname, sizeof( texname ), "#MAP/%s_%i%i.spr", mod->name, i / 10, i % 10 );
+
+		psprite->frames[i].frameptr = Mem_Calloc( mod->mempool, sizeof( mspriteframe_t ));
+		pspriteframe = psprite->frames[i].frameptr;
+		pspriteframe->width = w;
+		pspriteframe->height = h;
+		pspriteframe->up = ( h >> 1 );
+		pspriteframe->left = -( w >> 1 );
+		pspriteframe->down = ( h >> 1 ) - h;
+		pspriteframe->right = w + -( w >> 1 );
+		pspriteframe->gl_texturenum = GL_LoadTextureInternal( texname, &temp, TF_IMAGE );
+
+		xl += w;
+		if( xl >= pix->width )
+		{
+			xl = 0;
+			yl += h;
+		}
+	}
+
+	FS_FreeImage( pix );
+	Mem_Free( temp.buffer );
+	if( loaded ) *loaded = true;
+}
+
 /*
 =============
 CL_LoadHudSprite
@@ -1213,7 +1330,7 @@ static qboolean CL_LoadHudSprite( const char *szSpriteName, model_t *m_pSprite, 
 		return false;
 
 	if( type == SPR_MAPSPRITE )
-		ref.dllFuncs.Mod_LoadMapSprite( m_pSprite, buf, size, &loaded );
+		Mod_LoadMapSprite( m_pSprite, buf, size, &loaded );
 	else
 	{
 		Mod_LoadSpriteModel( m_pSprite, buf, &loaded );
@@ -1607,35 +1724,16 @@ CL_FillRGBA
 */
 static void GAME_EXPORT CL_FillRGBA( int x, int y, int w, int h, int r, int g, int b, int a )
 {
-	float _x = x, _y = y, _w = w, _h = h;
+	float x_ = x, y_ = y, w_ = w, h_ = h;
 
 	r = bound( 0, r, 255 );
 	g = bound( 0, g, 255 );
 	b = bound( 0, b, 255 );
 	a = bound( 0, a, 255 );
 
-	SPR_AdjustSize( &_x, &_y, &_w, &_h );
+	SPR_AdjustSize( &x_, &y_, &w_, &h_ );
 
-#if 1
-	ref.dllFuncs.FillRGBA( _x, _y, _w, _h, r, g, b, a );
-#else
-	pglDisable( GL_TEXTURE_2D );
-	pglEnable( GL_BLEND );
-	pglTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	pglBlendFunc( GL_SRC_ALPHA, GL_ONE );
-	pglColor4f( r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f );
-
-	pglBegin( GL_QUADS );
-		pglVertex2f( _x, _y );
-		pglVertex2f( _x + _w, _y );
-		pglVertex2f( _x + _w, _y + _h );
-		pglVertex2f( _x, _y + _h );
-	pglEnd ();
-
-	pglColor3f( 1.0f, 1.0f, 1.0f );
-	pglEnable( GL_TEXTURE_2D );
-	pglDisable( GL_BLEND );
-#endif
+	ref.dllFuncs.FillRGBA( kRenderTransAdd, x_, y_, w_, h_, r, g, b, a );
 }
 
 /*
@@ -3114,35 +3212,16 @@ pfnFillRGBABlend
 */
 static void GAME_EXPORT CL_FillRGBABlend( int x, int y, int w, int h, int r, int g, int b, int a )
 {
-	float _x = x, _y = y, _w = w, _h = h;
+	float x_ = x, y_ = y, w_ = w, h_ = h;
 
 	r = bound( 0, r, 255 );
 	g = bound( 0, g, 255 );
 	b = bound( 0, b, 255 );
 	a = bound( 0, a, 255 );
 
-	SPR_AdjustSize( &_x, &_y, &_w, &_h );
+	SPR_AdjustSize( &x_, &y_, &w_, &h_ );
 
-#if 1 // REFTODO:
-	ref.dllFuncs.FillRGBABlend( _x, _y, _w, _h, r, g, b, a );
-#else
-	pglDisable( GL_TEXTURE_2D );
-	pglEnable( GL_BLEND );
-	pglTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	pglBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	pglColor4f( r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f );
-
-	pglBegin( GL_QUADS );
-		pglVertex2f( _x, _y );
-		pglVertex2f( _x + _w, _y );
-		pglVertex2f( _x + _w, _y + _h );
-		pglVertex2f( _x, _y + _h );
-	pglEnd ();
-
-	pglColor3f( 1.0f, 1.0f, 1.0f );
-	pglEnable( GL_TEXTURE_2D );
-	pglDisable( GL_BLEND );
-#endif
+	ref.dllFuncs.FillRGBA( kRenderTransTexture, x_, y_, w_, h_, r, g, b, a );
 }
 
 /*
@@ -3488,7 +3567,7 @@ static void GAME_EXPORT NetAPI_SendRequest( int context, int request, int flags,
 	nr->flags = flags;
 
 	// local servers request
-	Netchan_OutOfBandPrint( NS_CLIENT, nr->resp.remote_address, "netinfo %i %i %i", FBitSet( flags, FNETAPI_LEGACY_PROTOCOL ) ? PROTOCOL_LEGACY_VERSION : PROTOCOL_VERSION, context, request );
+	Netchan_OutOfBandPrint( NS_CLIENT, nr->resp.remote_address, A2A_NETINFO" %i %i %i", FBitSet( flags, FNETAPI_LEGACY_PROTOCOL ) ? PROTOCOL_LEGACY_VERSION : PROTOCOL_VERSION, context, request );
 }
 
 /*

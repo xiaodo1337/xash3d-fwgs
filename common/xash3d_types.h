@@ -73,7 +73,7 @@ typedef uint64_t longtime_t;
 #if defined( __GNUC__ )
 	#if defined( __i386__ )
 		#define EXPORT         __attribute__(( visibility( "default" ), force_align_arg_pointer ))
-		#define GAME_EXPORT    __attribute(( force_align_arg_pointer ))
+		#define GAME_EXPORT    __attribute__(( force_align_arg_pointer ))
 	#else
 		#define EXPORT         __attribute__(( visibility ( "default" )))
 		#define GAME_EXPORT
@@ -91,7 +91,13 @@ typedef uint64_t longtime_t;
 	#endif
 	#define NORETURN           __attribute__(( noreturn ))
 	#define NONNULL            __attribute__(( nonnull ))
-	#define _format( x )       __attribute__(( format( printf, x, x + 1 )))
+	#define RETURNS_NONNULL    __attribute__(( returns_nonnull ))
+	#if __clang__
+		#define PFN_RETURNS_NONNULL // clang has bugged returns_nonnull for functions pointers, it's ignored and generates a warning about objective-c? O_o
+	#else
+		#define PFN_RETURNS_NONNULL RETURNS_NONNULL
+	#endif
+	#define FORMAT_CHECK( x )  __attribute__(( format( printf, x, x + 1 )))
 	#define ALLOC_CHECK( x )   __attribute__(( alloc_size( x )))
 	#define NO_ASAN            __attribute__(( no_sanitize( "address" )))
 	#define WARN_UNUSED_RESULT __attribute__(( warn_unused_result ))
@@ -107,12 +113,24 @@ typedef uint64_t longtime_t;
 	#define GAME_EXPORT
 	#define NORETURN
 	#define NONNULL
-	#define _format( x )
+	#define RETURNS_NONNULL
+	#define PFN_RETURNS_NONNULL
+	#define FORMAT_CHECK( x )
 	#define ALLOC_CHECK( x )
 	#define RENAME_SYMBOL( x )
 	#define MALLOC
 	#define MALLOC_LIKE( x, y )
 	#define WARN_UNUSED_RESULT
+#endif
+
+#if defined( __has_feature )
+	#if __has_feature( address_sanitizer )
+		#define USE_ASAN 1
+	#endif // __has_feature
+#endif // defined( __has_feature )
+
+#if !defined( USE_ASAN ) && defined( __SANITIZE_ADDRESS__ )
+#define USE_ASAN 1
 #endif
 
 #if __GNUC__ >= 3

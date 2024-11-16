@@ -24,18 +24,27 @@ GNU General Public License for more details.
 
 typedef struct
 {
-	byte		*data;
-	int		cursize;
-	int		maxsize;
+	byte *const data;
+	const int maxsize;
+	int cursize;
 } cmdbuf_t;
 
-qboolean			cmd_wait;
-cmdbuf_t			cmd_text, filteredcmd_text;
-byte			cmd_text_buf[MAX_CMD_BUFFER];
-byte			filteredcmd_text_buf[MAX_CMD_BUFFER];
-cmdalias_t		*cmd_alias;
-uint			cmd_condition;
-int			cmd_condlevel;
+static qboolean cmd_wait;
+static byte     cmd_text_buf[MAX_CMD_BUFFER];
+static byte     filteredcmd_text_buf[MAX_CMD_BUFFER];
+static cmdbuf_t cmd_text =
+{
+	.data = cmd_text_buf,
+	.maxsize = ARRAYSIZE( cmd_text_buf ),
+};
+static cmdbuf_t filteredcmd_text =
+{
+	.data = filteredcmd_text_buf,
+	.maxsize = ARRAYSIZE( filteredcmd_text_buf ),
+};
+static cmdalias_t *cmd_alias;
+static uint cmd_condition;
+static int  cmd_condlevel;
 static qboolean cmd_currentCommandIsPrivileged;
 
 static void Cmd_ExecuteStringWithPrivilegeCheck( const char *text, qboolean isPrivileged );
@@ -47,20 +56,6 @@ static void Cmd_ExecuteStringWithPrivilegeCheck( const char *text, qboolean isPr
 
 =============================================================================
 */
-
-/*
-============
-Cbuf_Init
-============
-*/
-static void Cbuf_Init( void )
-{
-	cmd_text.data = cmd_text_buf;
-	filteredcmd_text.data = filteredcmd_text_buf;
-
-	filteredcmd_text.maxsize = cmd_text.maxsize = MAX_CMD_BUFFER;
-	filteredcmd_text.cursize = cmd_text.cursize = 0;
-}
 
 /*
 ============
@@ -1219,13 +1214,13 @@ void Cmd_Unlink( int group )
 	cmd_t	**prev;
 	int	count = 0;
 
-	if( Cvar_VariableInteger( "host_gameloaded" ) && FBitSet( group, CMD_SERVERDLL ))
+	if( FBitSet( group, CMD_SERVERDLL ) && Cvar_VariableInteger( "host_gameloaded" ))
 		return;
 
-	if( Cvar_VariableInteger( "host_clientloaded" ) && FBitSet( group, CMD_CLIENTDLL ))
+	if( FBitSet( group, CMD_CLIENTDLL ) && Cvar_VariableInteger( "host_clientloaded" ))
 		return;
 
-	if( Cvar_VariableInteger( "host_gameuiloaded" ) && FBitSet( group, CMD_GAMEUIDLL ))
+	if( FBitSet( group, CMD_GAMEUIDLL ) && Cvar_VariableInteger( "host_gameuiloaded" ))
 		return;
 
 	prev = &cmd_functions;
@@ -1387,8 +1382,6 @@ Cmd_Init
 */
 void Cmd_Init( void )
 {
-	Cbuf_Init();
-
 	cmd_functions = NULL;
 	cmd_condition = 0;
 	cmd_alias = NULL;

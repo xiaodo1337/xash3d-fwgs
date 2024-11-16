@@ -715,7 +715,8 @@ void SV_DeactivateServer( void )
 
 	PM_ClearPhysEnts( svgame.pmove );
 
-	SV_EmptyStringPool();
+	SV_EmptyStringPool( true );
+	Mem_EmptyPool( svgame.stringspool );
 
 	for( i = 0; i < svs.maxclients; i++ )
 	{
@@ -973,7 +974,7 @@ static void SV_GenerateTestPacket( void )
 	// write packet base data
 	MSG_Init( &svs.testpacket, "BandWidthTest", svs.testpacket_buf, maxsize );
 	MSG_WriteLong( &svs.testpacket, -1 );
-	MSG_WriteString( &svs.testpacket, "testpacket" );
+	MSG_WriteString( &svs.testpacket, S2C_BANDWIDTHTEST );
 	svs.testpacket_crcpos = svs.testpacket.pData + MSG_GetNumBytesWritten( &svs.testpacket );
 	MSG_WriteDword( &svs.testpacket, 0 ); // to be changed by crc
 
@@ -1027,6 +1028,8 @@ qboolean SV_SpawnServer( const char *mapname, const char *startspot, qboolean ba
 
 	if( !SV_InitGame( ))
 		return false;
+
+	Delta_Init(); // re-initialize delta
 
 	// unlock sv_cheats in local game
 	ClearBits( sv_cheats.flags, FCVAR_READ_ONLY );

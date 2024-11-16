@@ -208,6 +208,14 @@ typedef enum fragsize_e
 	FRAGSIZE_UNRELIABLE
 } fragsize_t;
 
+typedef enum netchan_flags_e
+{
+	NETCHAN_USE_LEGACY_SPLIT = BIT( 0 ),
+	NETCHAN_USE_MUNGE = BIT( 1 ),
+	NETCHAN_USE_BZIP2 = BIT( 2 ),
+	NETCHAN_GOLDSRC = BIT( 3 ),
+} netchan_flags_t;
+
 // Network Connection Channel
 typedef struct netchan_s
 {
@@ -270,10 +278,14 @@ typedef struct netchan_s
 	// added for net_speeds
 	size_t		total_sended;
 	size_t		total_received;
-	qboolean	split;
 	unsigned int	maxpacket;
 	unsigned int	splitid;
-	netsplit_t netsplit;
+	netsplit_t	netsplit;
+
+	qboolean	split;
+	qboolean	use_munge;
+	qboolean	use_bz2;
+	qboolean	gs_netchan;
 } netchan_t;
 
 extern netadr_t		net_from;
@@ -287,15 +299,15 @@ extern int		net_drop;
 
 void Netchan_Init( void );
 void Netchan_Shutdown( void );
-void Netchan_Setup( netsrc_t sock, netchan_t *chan, netadr_t adr, int qport, void *client, int (*pfnBlockSize)(void *, fragsize_t mode ) );
+void Netchan_Setup( netsrc_t sock, netchan_t *chan, netadr_t adr, int qport, void *client, int (*pfnBlockSize)(void *, fragsize_t mode ), uint flags );
 void Netchan_CreateFileFragmentsFromBuffer( netchan_t *chan, const char *filename, byte *pbuf, int size );
 qboolean Netchan_CopyNormalFragments( netchan_t *chan, sizebuf_t *msg, size_t *length );
 qboolean Netchan_CopyFileFragments( netchan_t *chan, sizebuf_t *msg );
 void Netchan_CreateFragments( netchan_t *chan, sizebuf_t *msg );
 int Netchan_CreateFileFragments( netchan_t *chan, const char *filename );
-void Netchan_TransmitBits( netchan_t *chan, int lengthInBits, byte *data );
-void Netchan_OutOfBand( int net_socket, netadr_t adr, int length, byte *data );
-void Netchan_OutOfBandPrint( int net_socket, netadr_t adr, const char *format, ... ) _format( 3 );
+void Netchan_TransmitBits( netchan_t *chan, int lengthInBits, const byte *data );
+void Netchan_OutOfBand( int net_socket, netadr_t adr, int length, const byte *data );
+void Netchan_OutOfBandPrint( int net_socket, netadr_t adr, const char *format, ... ) FORMAT_CHECK( 3 );
 qboolean Netchan_Process( netchan_t *chan, sizebuf_t *msg );
 void Netchan_UpdateProgress( netchan_t *chan );
 qboolean Netchan_IncomingReady( netchan_t *chan );

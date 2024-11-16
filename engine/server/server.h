@@ -475,7 +475,7 @@ extern convar_t		sv_expose_player_list;
 // sv_main.c
 //
 void SV_FinalMessage( const char *message, qboolean reconnect );
-void SV_KickPlayer( sv_client_t *cl, const char *fmt, ... ) _format( 2 );
+void SV_KickPlayer( sv_client_t *cl, const char *fmt, ... ) FORMAT_CHECK( 2 );
 void SV_DropClient( sv_client_t *cl, qboolean crash ) RENAME_SYMBOL( "SV_DropClient_" );
 void SV_UpdateMovevars( qboolean initialize );
 int SV_ModelIndex( const char *name );
@@ -523,7 +523,7 @@ void SV_WaterMove( edict_t *ent );
 // sv_send.c
 //
 void SV_SendClientMessages( void );
-void SV_ClientPrintf( sv_client_t *cl, const char *fmt, ... ) _format( 2 );
+void SV_ClientPrintf( sv_client_t *cl, const char *fmt, ... ) FORMAT_CHECK( 2 );
 
 //
 // sv_client.c
@@ -546,7 +546,7 @@ qboolean SV_IsPlayerIndex( int idx );
 int SV_CalcPing( sv_client_t *cl );
 void SV_UpdateServerInfo( void );
 void SV_EndRedirect( host_redirect_t *rd );
-void SV_RejectConnection( netadr_t from, const char *fmt, ... ) _format( 2 );
+void SV_RejectConnection( netadr_t from, const char *fmt, ... ) FORMAT_CHECK( 2 );
 void SV_GetPlayerCount( int *clients, int *bots );
 qboolean SV_HavePassword( void );
 
@@ -609,7 +609,7 @@ string_t SV_AllocString( const char *szValue );
 string_t SV_MakeString( const char *szValue );
 const char *SV_GetString( string_t iString );
 void SV_SetStringArrayMode( qboolean dynamic );
-void SV_EmptyStringPool( void );
+void SV_EmptyStringPool( qboolean clear_stats );
 void SV_PrintStr64Stats_f( void );
 sv_client_t *SV_ClientFromEdict( const edict_t *pEdict, qboolean spawned_only );
 uint SV_MapIsValid( const char *filename, const char *landmark_name );
@@ -683,6 +683,6 @@ int SV_LightForEntity( edict_t *pEdict );
 //
 // sv_query.c
 //
-qboolean SV_SourceQuery_HandleConnnectionlessPacket( const char *c, netadr_t from );
+void SV_SourceQuery_HandleConnnectionlessPacket( const char *c, netadr_t from );
 
 #endif//SERVER_H

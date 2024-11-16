@@ -17,15 +17,13 @@ GNU General Public License for more details.
 #include "protocol.h"
 #include "net_buffer.h"
 #include "xash3d_mathlib.h"
-//#define DEBUG_NET_MESSAGES_SEND
-//#define DEBUG_NET_MESSAGES_READ
 
 // precalculated bit masks for WriteUBitLong.
 // Using these tables instead of doing the calculations
 // gives a 33% speedup in WriteUBitLong.
 static uint32_t	BitWriteMasks[32][33];
 static uint32_t	ExtraMasks[32];
-const char *svc_strings[svc_lastmsg+1] =
+const char *const svc_strings[svc_lastmsg+1] =
 {
 	"svc_bad",
 	"svc_nop",
@@ -81,7 +79,7 @@ const char *svc_strings[svc_lastmsg+1] =
 	"svc_director",
 	"svc_voiceinit",
 	"svc_voicedata",
-	"svc_deltapacketbones",
+	"svc_unused54",
 	"svc_unused55",
 	"svc_resourcelocation",
 	"svc_querycvarvalue",
@@ -89,7 +87,7 @@ const char *svc_strings[svc_lastmsg+1] =
 	"svc_exec",
 };
 
-const char *svc_legacy_strings[svc_lastmsg+1] =
+const char *const svc_legacy_strings[svc_lastmsg+1] =
 {
 	[svc_legacy_changing] = "svc_legacy_changing",
 	[svc_legacy_ambientsound] = "svc_legacy_ambientsound",
@@ -100,7 +98,7 @@ const char *svc_legacy_strings[svc_lastmsg+1] =
 	[svc_legacy_chokecount] = "svc_legacy_chokecount",
 };
 
-const char *svc_goldsrc_strings[svc_lastmsg+1] =
+const char *const svc_goldsrc_strings[svc_lastmsg+1] =
 {
 	[svc_goldsrc_version] = "svc_goldsrc_version",
 	[svc_goldsrc_serverinfo] = "svc_goldsrc_serverinfo",
@@ -119,7 +117,7 @@ const char *svc_goldsrc_strings[svc_lastmsg+1] =
 	[svc_goldsrc_sendcvarvalue2] = "svc_goldsrc_sendcvarvalue2",
 };
 
-const char *svc_quake_strings[svc_lastmsg+1] =
+const char *const svc_quake_strings[svc_lastmsg+1] =
 {
 	[svc_updatestat] = "svc_quake_updatestat",
 	[svc_version] = "svc_quake_version",
@@ -213,17 +211,23 @@ void MSG_WriteSBitLong( sizebuf_t *sb, int data, int numbits )
 	// do we have a valid # of bits to encode with?
 	Assert( numbits >= 1 && numbits <= 32 );
 
-	// NOTE: it does this wierdness here so it's bit-compatible with regular integer data in the buffer.
-	// (Some old code writes direct integers right into the buffer).
-	if( data < 0 )
+	if( sb->iAlternateSign )
 	{
-		MSG_WriteUBitLong( sb, (uint)( 0x80000000 + data ), numbits - 1 );
-		MSG_WriteOneBit( sb, 1 );
+		MSG_WriteOneBit( sb, data < 0 ? 1 : 0 );
+		MSG_WriteUBitLong( sb, (uint)abs( data ), numbits - 1 );
 	}
 	else
 	{
-		MSG_WriteUBitLong( sb, (uint)data, numbits - 1 );
-		MSG_WriteOneBit( sb, 0 );
+		if( data < 0 )
+		{
+			MSG_WriteUBitLong( sb, (uint)( 0x80000000 + data ), numbits - 1 );
+			MSG_WriteOneBit( sb, 1 );
+		}
+		else
+		{
+			MSG_WriteUBitLong( sb, (uint)data, numbits - 1 );
+			MSG_WriteOneBit( sb, 0 );
+		}
 	}
 }
 
@@ -317,28 +321,30 @@ void MSG_WriteVec3Angles( sizebuf_t *sb, const float *fa )
 
 void MSG_WriteCmdExt( sizebuf_t *sb, int cmd, netsrc_t type, const char *name )
 {
-#ifdef DEBUG_NET_MESSAGES_SEND
-	if( name != NULL )
+	if( unlikely( net_send_debug.value ))
 	{
-		// get custom name
-		Con_Printf( "^1sv^7 write: %s\n", name );
-	}
-	else if( type == NS_SERVER )
-	{
-		if( cmd >= 0 && cmd <= svc_lastmsg )
+		if( name != NULL )
 		{
-			// get engine message name
-			Con_Printf( "^1sv^7 write: %s\n", svc_strings[cmd] );
+			// get custom name
+			Con_Printf( "^1sv^7 (%d) write: %s\n", sb->iCurBit, name );
+		}
+		else if( type == NS_SERVER )
+		{
+			if( cmd >= 0 && cmd <= svc_lastmsg )
+			{
+				// get engine message name
+				Con_Printf( "^1sv^7 (%d) write: %s\n", sb->iCurBit, svc_strings[cmd] );
+			}
+		}
+		else if( type == NS_CLIENT )
+		{
+			if( cmd >= 0 && cmd <= clc_lastmsg && cmd != clc_nop )
+			{
+				Con_Printf( "^1cl^7 (%d) write: %s\n", sb->iCurBit, clc_strings[cmd] );
+			}
 		}
 	}
-	else if( type == NS_CLIENT )
-	{
-		if( cmd >= 0 && cmd <= clc_lastmsg )
-		{
-			Con_Printf( "^1cl^7 write: %s\n", clc_strings[cmd] );
-		}
-	}
-#endif
+
 	MSG_WriteUBitLong( sb, cmd, sizeof( uint8_t ) << 3 );
 }
 
@@ -533,12 +539,22 @@ int MSG_ReadSBitLong( sizebuf_t *sb, int numbits )
 {
 	int	r, sign;
 
-	r = MSG_ReadUBitLong( sb, numbits - 1 );
+	if( sb->iAlternateSign )
+	{
+		sign = MSG_ReadOneBit( sb );
+		r = MSG_ReadUBitLong( sb, numbits - 1 );
 
-	// NOTE: it does this wierdness here so it's bit-compatible with regular integer data in the buffer.
-	// (Some old code writes direct integers right into the buffer).
-	sign = MSG_ReadOneBit( sb );
-	if( sign ) r = -( BIT( numbits - 1 ) - r );
+		if( sign )
+			r = -r;
+	}
+	else
+	{
+		r = MSG_ReadUBitLong( sb, numbits - 1 );
+		sign = MSG_ReadOneBit( sb );
+
+		if( sign )
+			r = -( BIT( numbits - 1 ) - r );
+	}
 
 	return r;
 }
@@ -554,22 +570,31 @@ int MSG_ReadCmd( sizebuf_t *sb, netsrc_t type )
 {
 	int	cmd = MSG_ReadUBitLong( sb, sizeof( uint8_t ) << 3 );
 
-#ifdef DEBUG_NET_MESSAGES_READ
-	if( type == NS_SERVER )
+	if( unlikely( net_recv_debug.value ))
 	{
-		Con_Printf( "^1cl^7 read: %s\n", CL_MsgInfo( cmd ));
+		if( type == NS_SERVER )
+		{
+			if( cmd != svc_nop )
+				Con_Printf( "^1cl^7 read: %s\n", CL_MsgInfo( cmd ));
+		}
+		else if( cmd >= 0 && cmd <= clc_lastmsg )
+		{
+			Con_Printf( "^1sv^7 read: %s\n", clc_strings[cmd] );
+		}
 	}
-	else if( cmd >= 0 && cmd <= clc_lastmsg )
-	{
-		Con_Printf( "^1sv^7 read: %s\n", clc_strings[cmd] );
-	}
-#endif
+
 	return cmd;
 }
 
 int MSG_ReadChar( sizebuf_t *sb )
 {
-	return MSG_ReadSBitLong( sb, sizeof( int8_t ) << 3 );
+	int alt = sb->iAlternateSign, ret;
+
+	sb->iAlternateSign = 0;
+	ret = MSG_ReadSBitLong( sb, sizeof( int8_t ) << 3 );
+	sb->iAlternateSign = alt;
+
+	return ret;
 }
 
 int MSG_ReadByte( sizebuf_t *sb )
@@ -579,7 +604,13 @@ int MSG_ReadByte( sizebuf_t *sb )
 
 int MSG_ReadShort( sizebuf_t *sb )
 {
-	return MSG_ReadSBitLong( sb, sizeof( int16_t ) << 3 );
+	int alt = sb->iAlternateSign, ret;
+
+	sb->iAlternateSign = 0;
+	ret = MSG_ReadSBitLong( sb, sizeof( int16_t ) << 3 );
+	sb->iAlternateSign = alt;
+
+	return ret;
 }
 
 int MSG_ReadWord( sizebuf_t *sb )
@@ -611,7 +642,13 @@ void MSG_ReadVec3Angles( sizebuf_t *sb, vec3_t fa )
 
 int MSG_ReadLong( sizebuf_t *sb )
 {
-	return MSG_ReadSBitLong( sb, sizeof( int32_t ) << 3 );
+	int alt = sb->iAlternateSign, ret;
+
+	sb->iAlternateSign = 0;
+	ret = MSG_ReadSBitLong( sb, sizeof( int32_t ) << 3 );
+	sb->iAlternateSign = alt;
+
+	return ret;
 }
 
 uint MSG_ReadDword( sizebuf_t *sb )

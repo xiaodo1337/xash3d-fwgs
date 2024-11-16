@@ -59,7 +59,7 @@ void GAME_EXPORT CL_PopPMStates( void )
 CL_IsPredicted
 ===============
 */
-qboolean CL_IsPredicted( void )
+static qboolean CL_IsPredicted( void )
 {
 	if( cl_nopred.value || cl.intermission )
 		return false;
@@ -320,10 +320,14 @@ static void CL_CopyEntityToPhysEnt( physent_t *pe, entity_state_t *state, qboole
 		// client or bot
 		Q_snprintf( pe->name, sizeof( pe->name ), "player %i", pe->player - 1 );
 	}
-	else
+	else if( mod != NULL )
 	{
 		// otherwise copy the modelname
 		Q_strncpy( pe->name, mod->name, sizeof( pe->name ));
+	}
+	else
+	{
+		Q_strncpy( pe->name, "entity %i", state->number );
 	}
 
 	pe->model = pe->studiomodel = NULL;
@@ -344,7 +348,7 @@ static void CL_CopyEntityToPhysEnt( physent_t *pe, entity_state_t *state, qboole
 	}
 
 	// rare case: not solid entities in vistrace
-	if( visent && VectorIsNull( pe->mins ))
+	if( visent && VectorIsNull( pe->mins ) && mod != NULL )
 	{
 		VectorCopy( mod->mins, pe->mins );
 		VectorCopy( mod->maxs, pe->maxs );

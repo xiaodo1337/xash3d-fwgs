@@ -55,7 +55,7 @@ gl_texture_t *R_GetTexture( GLenum texnum )
 GL_TargetToString
 =================
 */
-static const char *GL_TargetToString( GLenum target )
+const char *GL_TargetToString( GLenum target )
 {
 	switch( target )
 	{
@@ -632,7 +632,7 @@ static void GL_SetTextureTarget( gl_texture_t *tex, rgbdata_t *pic )
 	pic->numMips = Q_max( 1, pic->numMips );
 
 	// trying to determine texture type
-#ifndef XASH_GLES
+#if !XASH_GLES
 	if( pic->width > 1 && pic->height <= 1 )
 		tex->target = GL_TEXTURE_1D;
 	else 
@@ -1094,7 +1094,7 @@ static void GL_TextureImageCompressed( gl_texture_t *tex, GLint side, GLint leve
 
 	Assert( tex != NULL );
 
-#ifndef XASH_GLES
+#if !XASH_GLES
 	if( tex->target == GL_TEXTURE_1D )
 	{
 		if( subImage ) pglCompressedTexSubImage1DARB( tex->target, level, 0, width, tex->format, size, data );

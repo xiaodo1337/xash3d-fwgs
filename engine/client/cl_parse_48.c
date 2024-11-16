@@ -137,12 +137,7 @@ static void CL_LegacyParseSoundPacket( sizebuf_t *msg, qboolean is_ambient )
 	if( FBitSet( flags, SND_SENTENCE ))
 	{
 		char	sentenceName[32];
-
-		//if( FBitSet( flags, SND_SEQUENCE ))
-			//Q_snprintf( sentenceName, sizeof( sentenceName ), "!#%i", sound + MAX_SOUNDS );
-		//else
 		Q_snprintf( sentenceName, sizeof( sentenceName ), "!%i", sound );
-
 		handle = S_RegisterSound( sentenceName );
 	}
 	else handle = cl.sound_index[sound];	// see precached sound
@@ -269,7 +264,7 @@ static void CL_LegacyParseResourceList( sizebuf_t *msg )
 
 	if( !cl_allow_download.value )
 	{
-		Con_DPrintf( "Refusing new resource, cl_allow_download set to 0\n" );
+		Con_DPrintf( "Refusing new resource, cl_allowdownload set to 0\n" );
 		reslist.rescount = 0;
 	}
 
@@ -300,7 +295,7 @@ static void CL_LegacyParseResourceList( sizebuf_t *msg )
 			continue;	// already exists
 
 		host.downloadcount++;
-		HTTP_AddDownload( path, -1, true );
+		HTTP_AddDownload( path, -1, true, NULL );
 	}
 
 	if( !host.downloadcount )
@@ -320,7 +315,7 @@ dispatch messages
 void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 {
 	size_t		bufStart, playerbytes;
-	int		cmd, param1, param2;
+	int		cmd;
 	int		old_background;
 	const char	*s;
 
@@ -345,6 +340,9 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 		// record command for debugging spew on parse problem
 		CL_Parse_RecordCommand( cmd, bufStart );
 
+		if( CL_ParseCommonDLLMessage( msg, PROTO_LEGACY, cmd, bufStart ))
+			continue;
+
 		// other commands
 		switch( cmd )
 		{
@@ -359,7 +357,7 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 			Host_AbortCurrentFrame ();
 			break;
 		case svc_legacy_event:
-			CL_ParseEvent( msg );
+			CL_ParseEvent( msg, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.event += MSG_GetNumBytesRead( msg ) - bufStart;
 			break;
 		case svc_legacy_changing:
@@ -421,7 +419,7 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 
 			break;
 		case svc_time:
-			CL_ParseServerTime( msg );
+			CL_ParseServerTime( msg, PROTO_LEGACY );
 			break;
 		case svc_print:
 			Con_Printf( "%s", MSG_ReadString( msg ));
@@ -446,19 +444,19 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 			break;
 		case svc_serverdata:
 			Cbuf_Execute(); // make sure any stuffed commands are done
-			CL_ParseServerData( msg, true );
+			CL_ParseServerData( msg, PROTO_LEGACY );
 			break;
 		case svc_lightstyle:
-			CL_ParseLightStyle( msg );
+			CL_ParseLightStyle( msg, PROTO_LEGACY );
 			break;
 		case svc_updateuserinfo:
-			CL_UpdateUserinfo( msg, true );
+			CL_UpdateUserinfo( msg, PROTO_LEGACY );
 			break;
 		case svc_deltatable:
 			Delta_ParseTableField( msg );
 			break;
 		case svc_clientdata:
-			CL_ParseClientData( msg );
+			CL_ParseClientData( msg, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.client += MSG_GetNumBytesRead( msg ) - bufStart;
 			break;
 		case svc_resource:
@@ -468,37 +466,29 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 			CL_UpdateUserPings( msg );
 			break;
 		case svc_particle:
-			CL_ParseParticles( msg );
+			CL_ParseParticles( msg, PROTO_LEGACY );
 			break;
 		case svc_restoresound:
-			CL_ParseRestoreSoundPacket( msg );
-			cl.frames[cl.parsecountmod].graphdata.sound += MSG_GetNumBytesRead( msg ) - bufStart;
+			Con_Printf( S_ERROR "%s: svc_restoresound: implement me!\n", __func__ );
 			break;
 		case svc_spawnstatic:
 			CL_LegacyParseStaticEntity( msg );
 			break;
 		case svc_event_reliable:
-			CL_ParseReliableEvent( msg );
+			CL_ParseReliableEvent( msg, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.event += MSG_GetNumBytesRead( msg ) - bufStart;
 			break;
 		case svc_spawnbaseline:
-			CL_ParseBaseline( msg, true );
-			break;
-		case svc_temp_entity:
-			CL_ParseTempEntity( msg );
-			cl.frames[cl.parsecountmod].graphdata.tentities += MSG_GetNumBytesRead( msg ) - bufStart;
+			CL_ParseBaseline( msg, PROTO_LEGACY );
 			break;
 		case svc_setpause:
 			cl.paused = ( MSG_ReadOneBit( msg ) != 0 );
 			break;
 		case svc_signonnum:
-			CL_ParseSignon( msg );
+			CL_ParseSignon( msg, PROTO_LEGACY );
 			break;
 		case svc_centerprint:
 			CL_CenterPrint( MSG_ReadString( msg ), 0.25f );
-			break;
-		case svc_intermission:
-			cl.intermission = 1;
 			break;
 		case svc_legacy_modelindex:
 			CL_LegacyPrecacheModel( msg );
@@ -506,44 +496,28 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 		case svc_legacy_soundindex:
 			CL_LegacyPrecacheSound( msg );
 			break;
-		case svc_cdtrack:
-			param1 = MSG_ReadByte( msg );
-			param1 = bound( 1, param1, MAX_CDTRACKS ); // tracknum
-			param2 = MSG_ReadByte( msg );
-			param2 = bound( 1, param2, MAX_CDTRACKS ); // loopnum
-			S_StartBackgroundTrack( clgame.cdtracks[param1-1], clgame.cdtracks[param2-1], 0, false );
-			break;
 		case svc_restore:
 			CL_ParseRestore( msg );
 			break;
 		case svc_legacy_eventindex:
 			CL_LegacyPrecacheEvent(msg);
 			break;
-		case svc_weaponanim:
-			param1 = MSG_ReadByte( msg );	// iAnim
-			param2 = MSG_ReadByte( msg );	// body
-			CL_WeaponAnim( param1, param2 );
-			break;
 		case svc_bspdecal:
 			CL_ParseStaticDecal( msg );
-			break;
-		case svc_roomtype:
-			param1 = MSG_ReadShort( msg );
-			Cvar_SetValue( "room_type", param1 );
 			break;
 		case svc_addangle:
 			CL_ParseAddAngle( msg );
 			break;
 		case svc_usermessage:
-			CL_RegisterUserMessage( msg );
+			CL_RegisterUserMessage( msg, PROTO_LEGACY );
 			break;
 		case svc_packetentities:
-			playerbytes = CL_ParsePacketEntities( msg, false );
+			playerbytes = CL_ParsePacketEntities( msg, false, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.players += playerbytes;
 			cl.frames[cl.parsecountmod].graphdata.entities += MSG_GetNumBytesRead( msg ) - bufStart - playerbytes;
 			break;
 		case svc_deltapacketentities:
-			playerbytes = CL_ParsePacketEntities( msg, true );
+			playerbytes = CL_ParsePacketEntities( msg, true, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.players += playerbytes;
 			cl.frames[cl.parsecountmod].graphdata.entities += MSG_GetNumBytesRead( msg ) - bufStart - playerbytes;
 			break;
@@ -590,9 +564,6 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 		case svc_hltv:
 			CL_ParseHLTV( msg );
 			break;
-		case svc_director:
-			CL_ParseDirector( msg );
-			break;
 		case svc_resourcelocation:
 			CL_ParseResLocation( msg );
 			break;
@@ -603,7 +574,7 @@ void CL_ParseLegacyServerMessage( sizebuf_t *msg )
 			CL_ParseCvarValue( msg, true, PROTO_LEGACY );
 			break;
 		default:
-			CL_ParseUserMessage( msg, cmd );
+			CL_ParseUserMessage( msg, cmd, PROTO_LEGACY );
 			cl.frames[cl.parsecountmod].graphdata.usr += MSG_GetNumBytesRead( msg ) - bufStart;
 			break;
 		}
@@ -615,7 +586,7 @@ void CL_LegacyPrecache_f( void )
 	int	spawncount, i;
 	model_t *mod;
 
-	if( !cls.legacymode )
+	if( cls.legacymode != PROTO_LEGACY )
 		return;
 
 	spawncount = Q_atoi( Cmd_Argv( 1 ));
@@ -657,9 +628,4 @@ void CL_LegacyPrecache_f( void )
 	MSG_BeginClientCmd( &cls.netchan.message, clc_stringcmd );
 	MSG_WriteStringf( &cls.netchan.message, "begin %i", spawncount );
 	cls.signon = SIGNONS - 1;
-}
-
-qboolean CL_LegacyMode( void )
-{
-	return cls.legacymode == PROTO_LEGACY;
 }

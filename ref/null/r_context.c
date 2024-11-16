@@ -115,12 +115,7 @@ static void R_DrawStretchPic( float x, float y, float w, float h, float s1, floa
 	;
 }
 
-static void R_DrawTileClear( int texnum, int x, int y, int w, int h )
-{
-	;
-}
-
-static void FillRGBA( float x, float y, float w, float h, int r, int g, int b, int a )
+static void FillRGBA( int rendermode, float x, float y, float w, float h, byte r, byte g, byte b, byte a )
 {
 	;
 }
@@ -177,6 +172,11 @@ static void GL_SubdivideSurface( model_t *mod, msurface_t *fa )
 	;
 }
 
+static void CL_RunLightStyles( lightstyle_t *ls )
+{
+
+}
+
 static void R_GetSpriteParms( int *frameWidth, int *frameHeight, int *numFrames, int currentFrame, const model_t *pSprite )
 {
 	if( frameWidth )
@@ -192,12 +192,6 @@ static void R_GetSpriteParms( int *frameWidth, int *frameHeight, int *numFrames,
 static int R_GetSpriteTexture( const model_t *m_pSpriteModel, int frame )
 {
 	return 0;
-}
-
-static void Mod_LoadMapSprite( struct model_s *mod, const void *buffer, size_t size, qboolean *loaded )
-{
-	*loaded = false;
-	return;
 }
 
 static qboolean Mod_ProcessRenderData( model_t *mod, qboolean create, const byte *buffer )
@@ -480,9 +474,7 @@ static const ref_interface_t gReffuncs =
 	.R_Set2DMode      = R_SimpleStubBool,
 	.R_DrawStretchRaw = R_DrawStretchRaw,
 	.R_DrawStretchPic = R_DrawStretchPic,
-	.R_DrawTileClear  = R_DrawTileClear,
 	.FillRGBA         = FillRGBA,
-	.FillRGBABlend    = FillRGBA,
 	.WorldToScreen    = WorldToScreen,
 
 	.VID_ScreenShot  = VID_ScreenShot,
@@ -501,12 +493,11 @@ static const ref_interface_t gReffuncs =
 
 	.R_SetSkyCloudsTextures     = R_SetSkyCloudsTextures,
 	.GL_SubdivideSurface = GL_SubdivideSurface,
-	.CL_RunLightStyles   = R_SimpleStub,
+	.CL_RunLightStyles   = CL_RunLightStyles,
 
 	.R_GetSpriteParms    = R_GetSpriteParms,
 	.R_GetSpriteTexture  = R_GetSpriteTexture,
 
-	.Mod_LoadMapSprite      = Mod_LoadMapSprite,
 	.Mod_ProcessRenderData  = Mod_ProcessRenderData,
 	.Mod_StudioLoadTextures = Mod_StudioLoadTextures,
 
