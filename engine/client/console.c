@@ -629,7 +629,7 @@ int Con_UtfProcessCharForce( int in )
 	if( g_codepage == 1252 )
 		return Q_UnicodeToCP1252( ch );
 
-	return '?'; // not implemented yet
+	return ch; // not implemented yet
 }
 
 int GAME_EXPORT Con_UtfProcessChar( int in )
@@ -1110,7 +1110,7 @@ static void Field_Paste( field_t *edit )
 	// send as if typed, so insert / overstrike works properly
 	pasteLen = Q_strlen( cbd );
 	for( i = 0; i < pasteLen; i++ )
-		Field_CharEvent( edit, cbd[i] );
+		Field_CharEvent( edit, (byte)cbd[i] );
 }
 
 /*
@@ -1899,7 +1899,7 @@ static void Con_DrawSolidConsole( int lines )
 	// draw current version
 	memcpy( color, g_color_table[7], sizeof( color ));
 
-	Q_snprintf( curbuild, MAX_STRING, XASH_ENGINE_NAME " %i/" XASH_VERSION " (%s-%s build %i)", PROTOCOL_VERSION, Q_buildos(), Q_buildarch(), Q_buildnum( ));
+	Q_snprintf( curbuild, MAX_STRING, XASH_ENGINE_NAME " UTF-8支持版本 %i/" XASH_VERSION " (%s-%s build %i)", PROTOCOL_VERSION, Q_buildos(), Q_buildarch(), Q_buildnum( ));
 
 	Con_DrawStringLen( curbuild, &stringLen, &charH );
 
@@ -2051,7 +2051,7 @@ void Con_DrawVersion( void )
 			return;
 
 		Q_snprintf( curbuild, sizeof( curbuild ),
-			XASH_ENGINE_NAME " v%i/" XASH_VERSION " (%s-%s build %i)", PROTOCOL_VERSION, Q_buildos(), Q_buildarch(), Q_buildnum( ));
+			XASH_ENGINE_NAME " UTF-8支持版本 v%i/" XASH_VERSION " (%s-%s build %i)", PROTOCOL_VERSION, Q_buildos(), Q_buildarch(), Q_buildnum( ));
 	}
 
 	Con_DrawStringLen( curbuild, &stringLen, &charH );
